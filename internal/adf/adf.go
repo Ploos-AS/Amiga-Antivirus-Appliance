@@ -1,7 +1,9 @@
 package adf
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -19,6 +21,7 @@ type Analysis struct {
 	DOSVersion         uint8  `json:"dos_version"`
 	Filesystem         string `json:"filesystem"`
 	Bootable           bool   `json:"bootable"`
+	BootblockSHA256    string `json:"bootblock_sha256"`
 	StoredChecksum     uint32 `json:"stored_checksum"`
 	CalculatedChecksum uint32 `json:"calculated_checksum"`
 	ChecksumValid      bool   `json:"checksum_valid"`
@@ -61,6 +64,7 @@ func Analyze(r io.Reader, size int64) (*Analysis, error) {
 	stored := binary.BigEndian.Uint32(boot[4:8])
 	root := binary.BigEndian.Uint32(boot[8:12])
 	calculated := CalculateBootblockChecksum(boot)
+	bootHash := sha256.Sum256(boot)
 
 	return &Analysis{
 		DiskType:           diskType,
@@ -68,6 +72,7 @@ func Analyze(r io.Reader, size int64) (*Analysis, error) {
 		DOSVersion:         boot[3],
 		Filesystem:         filesystemName(boot[3]),
 		Bootable:           hasBootCode(boot[12:]),
+		BootblockSHA256:    hex.EncodeToString(bootHash[:]),
 		StoredChecksum:     stored,
 		CalculatedChecksum: calculated,
 		ChecksumValid:      stored == calculated,
