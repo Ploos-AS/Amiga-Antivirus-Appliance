@@ -1,0 +1,85 @@
+# M7.1 — Evidence and provenance
+
+## Goal
+
+M7.1 strengthens Signature Factory evidence so every attributable detection can preserve engine identity, version/database identity, OS profile and correlation semantics without accidentally counting two frontends backed by the same knowledge source as independent confirmation.
+
+M7.1 builds on the M7.0 candidate/store/lifecycle foundation. It does not publish signatures automatically and it does not change the rule that malware samples stay outside Git.
+
+## Normalized evidence record
+
+Schema-v1 candidate JSON keeps the existing `evidence` array, but evidence entries may now carry structured attribution:
+
+```json
+{
+  "type": "engine-detection",
+  "detail": "Virus detected as Foo",
+  "source_engine": "virusz",
+  "source_version": "1.04",
+  "signature_db_version": "...",
+  "os_profile": "os31",
+  "correlation_key": "xvs:<database identity>"
+}
+```
+
+The fields are:
+
+- `type`: evidence class, for example `engine-detection`, `bootblock-database`, `lifecycle`, `corpus-check`;
+- `detail`: short attributable description or source reference;
+- `source_engine`: logical scanner/engine name;
+- `source_version`: exact engine version when known;
+- `signature_db_version`: exact database/XVS/Brain/signature-set identity when known;
+- `os_profile`: execution profile such as `os13`, `os204`, `os31`, `os32` when applicable;
+- `correlation_key`: identity of the underlying knowledge source used for independence calculations.
+
+Unattributed administrative evidence such as lifecycle transitions may contain only `type` and `detail`. Once any engine/version/database/profile/correlation attribution is present, `source_engine` and `correlation_key` are mandatory and validation fails closed if they are absent.
+
+## Correlation policy
+
+`correlation_key` represents the underlying source of detection knowledge, not merely the frontend process name.
+
+Examples:
+
+- two wrappers around the same ClamAV database use the same correlation key and count as one source;
+- two historical scanners that both consume the same XVS signature database use the same XVS correlation key and count as one source for that evidence;
+- an independent scanner with its own unrelated database uses a different correlation key;
+- AAA's curated bootblock database uses an AAA bootblock-database correlation key tied to its provenance source.
+
+M7.1 code provides deterministic counting of unique correlation keys. This is infrastructure only: M7.1 does not automatically promote confidence merely because the count reaches a threshold.
+
+## Independence versus agreement
+
+Agreement and independence are separate concepts. Multiple engines may agree on a malware name while still deriving that answer from the same database. Such agreement is useful evidence but is not independent corroboration.
+
+Future confidence/promotion policy may use independent-source counts, but it must remain explicit and auditable.
+
+## Native AAA evidence
+
+When the native scanner creates a candidate from a known-malicious bootblock database match, the evidence record is attributed to `aaa-native` and receives a stable correlation key rooted in the bootblock database provenance source. The containing sample SHA-256 and exact bootblock SHA-256 remain distinct candidate fields as defined by M7.0.
+
+## Historical engines
+
+M8 adapters will eventually feed normalized evidence into this model for:
+
+- VirusZ III;
+- VirusExecutor;
+- VirusChecker II;
+- VirusSlayer II;
+- Mill;
+- VT-Schutz.
+
+Those adapters must record engine version, database/XVS/Brain identity where observable, OS profile and raw-result provenance. Missing metadata must remain missing rather than being guessed.
+
+## M7.1 initial code qualification
+
+The first M7.1 slice is code-qualified when:
+
+- normalized evidence fields exist without breaking M7.0 schema-v1 records;
+- evidence validation fails closed for partially attributed records;
+- correlated frontends sharing one `correlation_key` count once;
+- independent keys are returned deterministically;
+- AAA native bootblock evidence carries structured attribution and correlation identity;
+- tests use synthetic evidence only;
+- gofmt, vet, tests and amd64/arm64 builds pass.
+
+Further M7.1 work will add adapters/helpers for importing normalized evidence from ClamAV and later historical-engine results before M7.2 export work begins.
