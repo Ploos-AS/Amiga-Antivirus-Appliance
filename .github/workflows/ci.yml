@@ -26,6 +26,10 @@ jobs:
             printf 'gofmt required for:\n%s\n' "$files"
             exit 1
           fi
+      - name: Resolve module sums
+        run: |
+          go mod tidy
+          cat go.sum
       - name: Vet
         run: go vet ./...
       - name: Test
