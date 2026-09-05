@@ -105,6 +105,19 @@ func ScanFile(path string) (Result, error) {
 		if err := analyzeADFBytes(&result, expanded); err != nil {
 			return Result{}, fmt.Errorf("analyze expanded ADZ ADF: %w", err)
 		}
+	case "dms":
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return Result{}, fmt.Errorf("read DMS: %w", err)
+		}
+		expanded, archiveAnalysis, err := archivepkg.DecodeDMS(data)
+		if err != nil {
+			return Result{}, fmt.Errorf("decode DMS: %w", err)
+		}
+		result.Archive = archiveAnalysis
+		if err := analyzeADFBytes(&result, expanded); err != nil {
+			return Result{}, fmt.Errorf("analyze expanded DMS ADF: %w", err)
+		}
 	case "zip", "lha":
 		data, err := os.ReadFile(path)
 		if err != nil {
