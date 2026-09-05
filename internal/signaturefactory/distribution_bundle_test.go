@@ -12,7 +12,7 @@ import (
 )
 
 func TestVerifyDistributionBundleSuccess(t *testing.T) {
-	root, manifest, trusted := writeDistributionBundleFixture(t)
+	root, manifest, trusted, _ := writeDistributionBundleFixture(t)
 	verified, identity, err := VerifyDistributionBundle(root, trusted)
 	if err != nil {
 		t.Fatalf("verify bundle: %v", err)
@@ -28,7 +28,7 @@ func TestVerifyDistributionBundleSuccess(t *testing.T) {
 
 func TestVerifyDistributionBundleRejectsChangedMissingAndWrongSizePayload(t *testing.T) {
 	t.Run("changed payload", func(t *testing.T) {
-		root, _, trusted := writeDistributionBundleFixture(t)
+		root, _, trusted, _ := writeDistributionBundleFixture(t)
 		path := filepath.Join(root, "aaa", "bootblocks.json")
 		if err := os.WriteFile(path, []byte("tampered payload\n"), 0o640); err != nil {
 			t.Fatal(err)
@@ -39,7 +39,7 @@ func TestVerifyDistributionBundleRejectsChangedMissingAndWrongSizePayload(t *tes
 	})
 
 	t.Run("missing payload", func(t *testing.T) {
-		root, _, trusted := writeDistributionBundleFixture(t)
+		root, _, trusted, _ := writeDistributionBundleFixture(t)
 		if err := os.Remove(filepath.Join(root, "clamav", "aaa.hsb")); err != nil {
 			t.Fatal(err)
 		}
@@ -49,9 +49,9 @@ func TestVerifyDistributionBundleRejectsChangedMissingAndWrongSizePayload(t *tes
 	})
 
 	t.Run("wrong declared size", func(t *testing.T) {
-		root, manifest, trusted := writeDistributionBundleFixture(t)
+		root, manifest, trusted, privateKey := writeDistributionBundleFixture(t)
 		manifest.Payloads[0].Size++
-		resignDistributionBundleManifest(t, root, &manifest, trustedFixturePrivateKey(t, root))
+		resignDistributionBundleManifest(t, root, &manifest, privateKey)
 		if _, _, err := VerifyDistributionBundle(root, trusted); err == nil || !strings.Contains(err.Error(), "size mismatch") {
 			t.Fatalf("expected size mismatch failure, got %v", err)
 		}
@@ -60,7 +60,7 @@ func TestVerifyDistributionBundleRejectsChangedMissingAndWrongSizePayload(t *tes
 
 func TestVerifyDistributionBundleRejectsNonCanonicalManifestAndSignatureFile(t *testing.T) {
 	t.Run("non canonical manifest", func(t *testing.T) {
-		root, manifest, trusted := writeDistributionBundleFixture(t)
+		root, manifest, trusted, _ := writeDistributionBundleFixture(t)
 		manifest.Payloads[0], manifest.Payloads[1] = manifest.Payloads[1], manifest.Payloads[0]
 		encoded, err := manifest.CanonicalBytes()
 		if err != nil {
@@ -77,7 +77,7 @@ func TestVerifyDistributionBundleRejectsNonCanonicalManifestAndSignatureFile(t *
 	})
 
 	t.Run("signature missing newline", func(t *testing.T) {
-		root, _, trusted := writeDistributionBundleFixture(t)
+		root, _, trusted, _ := writeDistributionBundleFixture(t)
 		path := filepath.Join(root, DistributionSignatureFilename)
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -93,7 +93,7 @@ func TestVerifyDistributionBundleRejectsNonCanonicalManifestAndSignatureFile(t *
 }
 
 func TestVerifyDistributionBundleRejectsSymlinkPayloadPath(t *testing.T) {
-	root, _, trusted := writeDistributionBundleFixture(t)
+	root, _, trusted, _ := writeDistributionBundleFixture(t)
 	outside := t.TempDir()
 	if err := os.RemoveAll(filepath.Join(root, "aaa")); err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestVerifyDistributionBundleRejectsSymlinkPayloadPath(t *testing.T) {
 	}
 }
 
-func writeDistributionBundleFixture(t *testing.T) (string, DistributionManifest, *TrustedDistributionKeys) {
+func writeDistributionBundleFixture(t *testing.T) (string, DistributionManifest, *TrustedDistributionKeys, ed25519.PrivateKey) {
 	t.Helper()
 	root := t.TempDir()
 	for _, dir := range []string{"aaa", "clamav"} {
@@ -141,11 +141,7 @@ func writeDistributionBundleFixture(t *testing.T) (string, DistributionManifest,
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The private key is test-only and kept outside the logical bundle files.
-	if err := os.WriteFile(filepath.Join(root, ".fixture-private-key"), []byte(hex.EncodeToString(privateKey)), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return root, manifest, trusted
+	return root, manifest, trusted, privateKey
 }
 
 func setPayloadFixtureMetadata(t *testing.T, manifest *DistributionManifest, target DistributionTarget, data []byte) {
@@ -177,17 +173,4 @@ func resignDistributionBundleManifest(t *testing.T, root string, manifest *Distr
 	if err := os.WriteFile(filepath.Join(root, DistributionSignatureFilename), []byte(signature+"\n"), 0o640); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func trustedFixturePrivateKey(t *testing.T, root string) ed25519.PrivateKey {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(root, ".fixture-private-key"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	decoded, err := hex.DecodeString(string(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return ed25519.PrivateKey(decoded)
 }
