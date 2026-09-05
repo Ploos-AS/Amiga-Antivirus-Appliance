@@ -28,7 +28,8 @@ aaa version
 - **M5** — structural Amiga Hunk analysis for standalone files and reconstructed ADF files: implemented and CI-qualified.
 - **M6.0** — bounded ADZ/gzip expansion plus scanner integration into the existing ADF → filesystem → file hash → Hunk pipeline: implemented and CI-qualified.
 - **M6.1a** — bounded ZIP member extraction, SHA-256, and content-aware member format classification: implemented and CI-qualified.
-- **M6.1b** — bounded LHA/LZH extraction plus full native per-member ADF/Hunk scanning for ZIP and LHA: implemented; CI qualification pending on the current HEAD.
+- **M6.1b** — bounded LHA/LZH extraction plus full native per-member ADF/Hunk scanning for ZIP and LHA: implemented and CI-qualified.
+- **M6.2** — DMS decoding through a bounded xDMS subprocess and full ADF pipeline integration: implemented; CI and reference-appliance runtime qualification pending.
 
 M3 can declare an ADF `infected` when its bootblock exactly matches a known-malicious entry. A known-clean bootblock does not make the whole disk clean, because complete malware inspection of reconstructed files is not implemented yet.
 
@@ -52,6 +53,7 @@ See `docs/EMULATED_SCANNERS.md` for the architecture contract.
 go build -o aaa ./cmd/aaa
 ./aaa scan disk.adf
 ./aaa scan disk.adz
+./aaa scan disk.dms
 ./aaa scan bundle.zip
 ./aaa scan archive.lha
 ./aaa scan --json archive.lha
@@ -62,6 +64,8 @@ For classic DD/HD ADF images, AAA reports geometry, DOS type/filesystem, boot-co
 M6.0 adds ADZ handling. AAA expands the gzip stream only in memory, enforces a 32 MiB hard limit, records the expanded member hash, validates that the result is a supported raw ADF, and then applies the same ADF scanner pipeline. Invalid or non-ADF ADZ payloads fail closed.
 
 M6.1 adds ZIP and LHA/LZH archive handling. ZIP/LHA archives are limited to 1024 members and 32 MiB aggregate expanded data. Member names are never used as host extraction paths. Each regular member receives SHA-256 and content-aware format classification. ADF members are passed through bootblock analysis, OFS/FFS traversal, reconstructed file hashing, and Hunk detection; standalone Hunk members receive structural Hunk analysis. An infected member propagates the infected verdict to the outer archive while retaining the member identity.
+
+M6.2 adds DMS support through the reference `xdms` utility. AAA sends the DMS stream to `xdms -q u stdin +stdout`, caps decoder output at 32 MiB, applies a 15-second timeout, and feeds the resulting ADF bytes into the same native scanner chain. No temporary DMS or ADF path is created. The DietPi appliance installer installs Debian's `xdms` package. xDMS is distributed as public-domain software.
 
 Nested archive expansion is deliberately deferred until M6.3 so explicit recursion and aggregate resource limits can be enforced first.
 
@@ -79,8 +83,6 @@ Verdict:  unknown
 ```
 
 M4 enumerates file and directory names, paths, and header-block numbers. M4.1 reconstructs OFS/FFS file byte streams transiently and records exact SHA-256 without writing extracted files to the host filesystem. M5 recognizes `HUNK_HEADER` load files and summarizes CODE, DATA, BSS, relocation and structural records without loading or executing them.
-
-M1 format identification also recognizes DMS where a content signature is available. Identification alone does not mean that format is fully decoded yet.
 
 See `docs/M1_SPEC.md`, `docs/M2_SPEC.md`, `docs/M3_SPEC.md`, `docs/M3_1_SPEC.md`, `docs/M4_SPEC.md`, `docs/M4_1_SPEC.md`, `docs/M5_SPEC.md`, and `docs/M6_SPEC.md` for the exact contracts.
 
@@ -120,7 +122,7 @@ make build
 make build-arm64
 ```
 
-The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/koron-go/lha` dependency for LHA/LZH decoding; dependency checksums are committed in `go.sum`.
+The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/koron-go/lha` dependency for LHA/LZH decoding; dependency checksums are committed in `go.sum`. M6.2 uses xDMS as a separate runtime decoder rather than linking its code into AAA.
 
 ## Roadmap
 
