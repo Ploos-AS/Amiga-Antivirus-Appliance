@@ -14,7 +14,7 @@ import (
 const version = "0.6.0-dev"
 
 type scanJSONOutput struct {
-	Scan   scanner.Result                    `json:"scan"`
+	Scan   scanner.Result                     `json:"scan"`
 	ClamAV *signaturefactory.ClamAVScanResult `json:"clamav,omitempty"`
 }
 
