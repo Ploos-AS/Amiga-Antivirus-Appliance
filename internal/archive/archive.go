@@ -36,23 +36,30 @@ type ExpandedMember struct {
 	Data []byte
 }
 
-// DecodeADZ expands one gzip-wrapped ADF entirely in memory. The caller owns
-// format validation of the resulting bytes. A hard expansion limit protects
-// the appliance from decompression bombs.
 func DecodeADZ(data []byte) ([]byte, *Analysis, error) {
+	return DecodeADZLimited(data, MaxExpandedSize)
+}
+
+// DecodeADZLimited expands one gzip-wrapped ADF entirely in memory. The caller
+// supplies the remaining expansion budget so nested scans can share a global
+// resource ceiling rather than resetting limits for every archive layer.
+func DecodeADZLimited(data []byte, maxExpanded int64) ([]byte, *Analysis, error) {
+	if maxExpanded <= 0 || maxExpanded > MaxExpandedSize {
+		return nil, nil, fmt.Errorf("invalid ADZ expansion limit: %d", maxExpanded)
+	}
 	zr, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, nil, fmt.Errorf("open ADZ gzip stream: %w", err)
 	}
 	defer zr.Close()
 
-	limited := io.LimitReader(zr, MaxExpandedSize+1)
+	limited := io.LimitReader(zr, maxExpanded+1)
 	expanded, err := io.ReadAll(limited)
 	if err != nil {
 		return nil, nil, fmt.Errorf("expand ADZ: %w", err)
 	}
-	if int64(len(expanded)) > MaxExpandedSize {
-		return nil, nil, fmt.Errorf("expanded ADZ exceeds %d-byte safety limit", MaxExpandedSize)
+	if int64(len(expanded)) > maxExpanded {
+		return nil, nil, fmt.Errorf("expanded ADZ exceeds %d-byte safety limit", maxExpanded)
 	}
 
 	sum := sha256.Sum256(expanded)
@@ -69,16 +76,27 @@ func DecodeADZ(data []byte) ([]byte, *Analysis, error) {
 	return expanded, analysis, nil
 }
 
-// DecodeZIP expands regular ZIP members into memory with strict member-count
-// and aggregate expansion limits. Directory entries are ignored. No paths are
-// created on the host filesystem, so member names cannot cause path traversal.
 func DecodeZIP(data []byte) ([]ExpandedMember, *Analysis, error) {
+	return DecodeZIPLimited(data, MaxExpandedSize, MaxMembers)
+}
+
+// DecodeZIPLimited expands regular ZIP members into memory with caller-supplied
+// remaining byte/member budgets. Directory entries still count toward the
+// archive entry ceiling even though they do not become scanner members.
+func DecodeZIPLimited(data []byte, maxExpanded int64, maxMembers int) ([]ExpandedMember, *Analysis, error) {
+	if maxExpanded <= 0 || maxExpanded > MaxExpandedSize {
+		return nil, nil, fmt.Errorf("invalid ZIP expansion limit: %d", maxExpanded)
+	}
+	if maxMembers <= 0 || maxMembers > MaxMembers {
+		return nil, nil, fmt.Errorf("invalid ZIP member limit: %d", maxMembers)
+	}
+
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, nil, fmt.Errorf("open ZIP: %w", err)
 	}
-	if len(zr.File) > MaxMembers {
-		return nil, nil, fmt.Errorf("ZIP contains %d entries, exceeds %d-entry safety limit", len(zr.File), MaxMembers)
+	if len(zr.File) > maxMembers {
+		return nil, nil, fmt.Errorf("ZIP contains %d entries, exceeds %d-entry safety limit", len(zr.File), maxMembers)
 	}
 
 	analysis := &Analysis{Format: "zip"}
@@ -96,11 +114,7 @@ func DecodeZIP(data []byte) ([]ExpandedMember, *Analysis, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("open ZIP member %q: %w", file.Name, err)
 		}
-		remaining := MaxExpandedSize - total
-		if remaining < 0 {
-			rc.Close()
-			return nil, nil, fmt.Errorf("expanded ZIP exceeds %d-byte safety limit", MaxExpandedSize)
-		}
+		remaining := maxExpanded - total
 		memberData, readErr := io.ReadAll(io.LimitReader(rc, remaining+1))
 		closeErr := rc.Close()
 		if readErr != nil {
@@ -110,7 +124,7 @@ func DecodeZIP(data []byte) ([]ExpandedMember, *Analysis, error) {
 			return nil, nil, fmt.Errorf("close ZIP member %q: %w", file.Name, closeErr)
 		}
 		if int64(len(memberData)) > remaining {
-			return nil, nil, fmt.Errorf("expanded ZIP exceeds %d-byte safety limit", MaxExpandedSize)
+			return nil, nil, fmt.Errorf("expanded ZIP exceeds %d-byte safety limit", maxExpanded)
 		}
 
 		total += int64(len(memberData))
@@ -120,11 +134,21 @@ func DecodeZIP(data []byte) ([]ExpandedMember, *Analysis, error) {
 	return expanded, analysis, nil
 }
 
-// DecodeLHA expands supported LHA/LZH members entirely in memory. The selected
-// reader supports the common -lh0-, -lh4-, -lh5-, -lh6- and -lh7- methods.
-// Unsupported methods fail closed. Member names are metadata only and are never
-// interpreted as host filesystem paths.
 func DecodeLHA(data []byte) ([]ExpandedMember, *Analysis, error) {
+	return DecodeLHALimited(data, MaxExpandedSize, MaxMembers)
+}
+
+// DecodeLHALimited expands supported LHA/LZH members entirely in memory using
+// caller-supplied remaining byte/member budgets. The selected reader supports
+// the common -lh0-, -lh4-, -lh5-, -lh6- and -lh7- methods. Unsupported methods
+// fail closed. Directory headers count toward the entry ceiling.
+func DecodeLHALimited(data []byte, maxExpanded int64, maxMembers int) ([]ExpandedMember, *Analysis, error) {
+	if maxExpanded <= 0 || maxExpanded > MaxExpandedSize {
+		return nil, nil, fmt.Errorf("invalid LHA expansion limit: %d", maxExpanded)
+	}
+	if maxMembers <= 0 || maxMembers > MaxMembers {
+		return nil, nil, fmt.Errorf("invalid LHA member limit: %d", maxMembers)
+	}
 	if !looksLikeLHA(data) {
 		return nil, nil, fmt.Errorf("not a recognized LHA/LZH stream")
 	}
@@ -133,11 +157,9 @@ func DecodeLHA(data []byte) ([]ExpandedMember, *Analysis, error) {
 	analysis := &Analysis{Format: "lha"}
 	expanded := make([]ExpandedMember, 0)
 	var total int64
+	entries := 0
 
 	for {
-		if len(expanded) >= MaxMembers {
-			return nil, nil, fmt.Errorf("LHA exceeds %d-member safety limit", MaxMembers)
-		}
 		h, err := r.NextHeader()
 		if err != nil {
 			return nil, nil, fmt.Errorf("read LHA header: %w", err)
@@ -145,11 +167,15 @@ func DecodeLHA(data []byte) ([]ExpandedMember, *Analysis, error) {
 		if h == nil {
 			break
 		}
+		entries++
+		if entries > maxMembers {
+			return nil, nil, fmt.Errorf("LHA exceeds %d-entry safety limit", maxMembers)
+		}
 		if h.Method == "-lhd-" {
 			continue
 		}
-		if h.OriginalSize > uint64(MaxExpandedSize) || int64(h.OriginalSize) > MaxExpandedSize-total {
-			return nil, nil, fmt.Errorf("expanded LHA exceeds %d-byte safety limit", MaxExpandedSize)
+		if h.OriginalSize > uint64(maxExpanded) || int64(h.OriginalSize) > maxExpanded-total {
+			return nil, nil, fmt.Errorf("expanded LHA exceeds %d-byte safety limit", maxExpanded)
 		}
 
 		var buf bytes.Buffer
