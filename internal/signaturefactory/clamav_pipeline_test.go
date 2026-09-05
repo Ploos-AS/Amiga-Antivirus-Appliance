@@ -2,6 +2,7 @@ package signaturefactory
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
