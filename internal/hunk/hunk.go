@@ -32,15 +32,15 @@ type Segment struct {
 }
 
 type Analysis struct {
-	Recognized   bool      `json:"recognized"`
-	HunkCount    int       `json:"hunk_count"`
-	FirstHunk    uint32    `json:"first_hunk,omitempty"`
-	LastHunk     uint32    `json:"last_hunk,omitempty"`
-	CodeBytes    uint64    `json:"code_bytes"`
-	DataBytes    uint64    `json:"data_bytes"`
-	BSSBytes     uint64    `json:"bss_bytes"`
-	Segments     []Segment `json:"segments,omitempty"`
-	Warnings     []string  `json:"warnings,omitempty"`
+	Recognized bool      `json:"recognized"`
+	HunkCount  int       `json:"hunk_count"`
+	FirstHunk  uint32    `json:"first_hunk,omitempty"`
+	LastHunk   uint32    `json:"last_hunk,omitempty"`
+	CodeBytes  uint64    `json:"code_bytes"`
+	DataBytes  uint64    `json:"data_bytes"`
+	BSSBytes   uint64    `json:"bss_bytes"`
+	Segments   []Segment `json:"segments,omitempty"`
+	Warnings   []string  `json:"warnings,omitempty"`
 }
 
 func Analyze(data []byte) *Analysis {
