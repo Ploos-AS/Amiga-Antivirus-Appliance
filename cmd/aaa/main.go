@@ -26,6 +26,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  aaa signatures validate\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures promote <id>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures reject <id>\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures export aaa\n")
 	fmt.Fprintf(os.Stderr, "  aaa version\n")
 }
 
@@ -174,7 +175,7 @@ func scanCommand(args []string) {
 		}
 	}
 	if result.Hunk != nil {
-		fmt.Printf("Hunk:     recognized=%t segments=%d code=%d data=%d bss=%d bytes\n", result.Hunk.Recognized, result.Hunk.HunkCount, result.Hunk.CodeBytes, result.Hunk.DataBytes, result.Hunk.BSSBytes)
+		fmt.Printf("Hunk:     recognized=%t segments=%d code=%d data=%d bss=%d bytes\n", result.Hunk.Recognized, result.Hunk.HunkCount, result.Hunk.CodeBytes, result.Hunk.BSSBytes)
 		for _, warning := range result.Hunk.Warnings {
 			fmt.Printf("Hunk warn: %s\n", warning)
 		}
@@ -232,6 +233,8 @@ func signaturesCommand(args []string) {
 			os.Exit(1)
 		}
 		fmt.Printf("%s %s\n", candidate.Status, candidate.ID)
+	case "export":
+		signatureExportCommand(store, args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown signatures subcommand: %s\n", args[0])
 		os.Exit(2)
