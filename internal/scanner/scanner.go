@@ -90,6 +90,23 @@ func ScanFile(path string) (Result, error) {
 		if err := analyzeADFBytes(&result, expanded); err != nil {
 			return Result{}, fmt.Errorf("analyze expanded ADZ ADF: %w", err)
 		}
+	case "zip":
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return Result{}, fmt.Errorf("read ZIP: %w", err)
+		}
+		members, archiveAnalysis, err := archivepkg.DecodeZIP(data)
+		if err != nil {
+			return Result{}, fmt.Errorf("decode ZIP: %w", err)
+		}
+		for i, member := range members {
+			memberHead := member.Data
+			if len(memberHead) > 4096 {
+				memberHead = memberHead[:4096]
+			}
+			archiveAnalysis.Members[i].Format = DetectFormat(member.Name, memberHead, int64(len(member.Data)))
+		}
+		result.Archive = archiveAnalysis
 	case "amiga-hunk-executable":
 		data, err := os.ReadFile(path)
 		if err != nil {
