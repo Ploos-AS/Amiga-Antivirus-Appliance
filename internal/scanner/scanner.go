@@ -144,6 +144,21 @@ func ScanFile(path string) (Result, error) {
 				return Result{}, fmt.Errorf("analyze derived IPF sector image: %w", err)
 			}
 		}
+	case "fdi":
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return Result{}, fmt.Errorf("read FDI: %w", err)
+		}
+		derived, preservationAnalysis, err := preservation.DecodeFDI(data)
+		if err != nil {
+			return Result{}, fmt.Errorf("decode FDI: %w", err)
+		}
+		result.PreservationImage = preservationAnalysis
+		if len(derived) > 0 {
+			if err := analyzeADFBytes(&result, derived); err != nil {
+				return Result{}, fmt.Errorf("analyze derived FDI sector image: %w", err)
+			}
+		}
 	case "zip", "lha", "lzx":
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -471,6 +486,8 @@ func DetectFormat(path string, head []byte, size int64) string {
 		return "lzx"
 	case ".ipf":
 		return "ipf"
+	case ".fdi":
+		return "fdi"
 	case ".hdf":
 		return "hdf"
 	}
