@@ -21,7 +21,7 @@ func TestAnalyzeFilesystemEnumeratesFilesAndDirectories(t *testing.T) {
 	putWord(file, 0, primaryHeaderType)
 	putName(file, "VirusZ")
 	putWord(file, hashChainWord, 101)
-	putWord(file, secondaryTypeWord, uint32(int32(secondaryFile)))
+	putWord(file, secondaryTypeWord, 0xfffffffd)
 
 	dir := image[101*blockSize : 102*blockSize]
 	putWord(dir, 0, primaryHeaderType)
@@ -33,7 +33,7 @@ func TestAnalyzeFilesystemEnumeratesFilesAndDirectories(t *testing.T) {
 	nested := image[102*blockSize : 103*blockSize]
 	putWord(nested, 0, primaryHeaderType)
 	putName(nested, "Scanner")
-	putWord(nested, secondaryTypeWord, uint32(int32(secondaryFile)))
+	putWord(nested, secondaryTypeWord, 0xfffffffd)
 
 	got, err := AnalyzeFilesystemBytes(image)
 	if err != nil {
