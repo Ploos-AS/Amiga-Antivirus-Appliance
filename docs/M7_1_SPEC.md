@@ -69,11 +69,11 @@ Missing database identity fails closed instead of inventing provenance. Raw resu
 
 M7.1 includes a bounded `clamscan` execution adapter. `RunClamAV` scans one already-existing regular host file and uses `AAA_CLAMSCAN` when configured, otherwise `clamscan` from `PATH`.
 
-The adapter:
+The adapter currently:
 
-- validates that the target is a regular file before execution;
+- validates that the target resolves to a regular file before execution;
 - executes `clamscan --version` first and fails closed unless engine and signature database identity can be parsed;
-- executes a single-file scan with `--no-summary --stdout -- <path>` without invoking a shell;
+- executes a single host-path scan with `--no-summary --stdout -- <path>` without invoking a shell;
 - applies a 5-second version-query timeout and a 30-second scan timeout;
 - caps stdout and stderr independently at 64 KiB;
 - accepts ClamAV exit code 0 only for a parsed `OK` result;
@@ -83,9 +83,11 @@ The adapter:
 
 A clean ClamAV result is returned as clean engine evidence state but does not create malware evidence.
 
+Before this execution slice can be formally qualified, AAA must explicitly disable ClamAV archive recursion so the external engine cannot independently expand opaque archive members outside AAA's bounded archive/provenance model.
+
 ## CLI and Signature Factory integration
 
-The bounded adapter is integrated explicitly at the AAA command layer to avoid coupling the native scanner package to Signature Factory. `aaa scan --clamav <file>` first performs the native AAA scan and then runs ClamAV against the exact submitted host path. The ordinary `aaa scan <file>` behavior remains unchanged, so ClamAV remains opt-in and absence of `clamscan` cannot silently change native scan semantics.
+The bounded adapter is integrated explicitly at the AAA command layer to avoid coupling the native scanner package to Signature Factory. `aaa scan --clamav <file>` first performs the native AAA scan and then runs ClamAV against the submitted host path. The ordinary `aaa scan <file>` behavior remains unchanged, so ClamAV remains opt-in and absence of `clamscan` cannot silently change native scan semantics.
 
 When `--clamav` is enabled:
 
@@ -97,6 +99,10 @@ When `--clamav` is enabled:
 - native infected-candidate recording continues independently of ClamAV.
 
 This integration deliberately does not redefine the native scanner's top-level verdict. Engine aggregation and cross-engine confidence policy remain later explicit work rather than being inferred from one external-engine result.
+
+Candidate persistence must preserve the M7.0 store conflict contract: an exact repeat is idempotent and reports that no new candidate was created, while a same-ID/different-content record must fail with `ErrCandidateConflict`. The ClamAV pipeline has dedicated synthetic qualification tests for these semantics.
+
+Before CLI integration is formally closed, the host file must also be re-verified after ClamAV execution so a path replacement or content change between the native hash and the external scan cannot produce a candidate whose SHA-256 no longer identifies the bytes actually scanned by ClamAV.
 
 ## Historical engines
 
@@ -111,24 +117,15 @@ M8 adapters will eventually feed normalized evidence into this model for:
 
 Those adapters must record engine version, database/XVS/Brain identity where observable, OS profile and raw-result provenance. Missing metadata must remain missing rather than being guessed.
 
-## M7.1 code qualification
+## M7.1 qualification status
 
-M7.1 is code-qualified for the normalized evidence, ClamAV provenance, bounded ClamAV execution and explicit CLI/candidate integration slices when:
+The normalized evidence model, ClamAV provenance parser, bounded command execution wiring and opt-in CLI integration are implemented and have previously passed the normal Go CI gates. GitHub Actions CI #162 passed on commit `6e677dde3832bbb4709e505df8db3bc8a55bbd0a`, qualifying that wiring/build state only.
 
-- normalized evidence fields exist without breaking M7.0 schema-v1 records;
-- evidence validation fails closed for partially attributed records;
-- correlated frontends sharing one `correlation_key` count once;
-- independent keys are returned deterministically;
-- AAA native bootblock evidence carries structured attribution and correlation identity;
-- strict ClamAV engine/database and result parsing is covered by synthetic tests;
-- the ClamAV evidence constructor requires engine and signature database identity;
-- ClamAV correlation uses database identity rather than frontend or engine revision;
-- the execution adapter has no shell interpolation, validates regular files, bounds output and execution time, and enforces explicit exit-code/result consistency;
-- synthetic fake-scanner tests cover infected, clean, scanner-error and timeout behavior;
-- the CLI exposes ClamAV only through explicit `--clamav` opt-in and preserves the native result schema when ClamAV is not requested;
-- ClamAV-only infected results can enter Signature Factory with attributable evidence while clean/error states cannot masquerade as malware evidence;
-- gofmt, vet, tests and amd64/arm64 builds pass.
+The earlier statement that the ClamAV CLI/candidate integration slice was fully closed was premature. Formal M7.1 ClamAV integration qualification remains blocked until all of the following are green:
 
-GitHub Actions CI #162 passed on commit `6e677dde3832bbb4709e505df8db3bc8a55bbd0a`, qualifying the code-changing CLI integration state. This documentation-only qualification commit is a descendant of that green state.
+- candidate persistence tests prove exact-repeat idempotence and same-ID/different-content conflict preservation;
+- ClamAV archive recursion is explicitly disabled and covered by synthetic execution-adapter tests;
+- the input is re-hashed or otherwise integrity-checked after ClamAV execution before an infected result can be committed as a candidate;
+- gofmt, vet, tests and amd64/arm64 builds pass on the final qualification commit.
 
-Further M7.1 work is reserved for historical-engine evidence and later explicit aggregate confidence policy. The ClamAV CLI/candidate integration slice is closed; M7.2 export work may proceed without claiming M8 historical-engine runtime qualification.
+M7.2 export code may exist in the tree, but M7.1 must not be represented as formally closed until these preservation blockers are resolved.
