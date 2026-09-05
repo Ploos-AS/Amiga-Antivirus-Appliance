@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanner"
+	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/signaturefactory"
 )
 
 const version = "0.6.0-dev"
@@ -54,6 +56,11 @@ func scanCommand(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "scan failed: %v\n", err)
 		os.Exit(1)
+	}
+	if result.Verdict == "infected" {
+		if err := recordSignatureCandidates(result); err != nil {
+			fmt.Fprintf(os.Stderr, "signature factory warning: %v\n", err)
+		}
 	}
 
 	if *jsonOut {
@@ -143,4 +150,13 @@ func scanCommand(args []string) {
 		fmt.Printf("Detect:   %s\n", result.Detection)
 	}
 	fmt.Printf("Verdict:  %s\n", result.Verdict)
+}
+
+func recordSignatureCandidates(result scanner.Result) error {
+	store, err := signaturefactory.NewStore(signaturefactory.StoreRootFromEnv())
+	if err != nil {
+		return err
+	}
+	_, err = signaturefactory.RecordScanResult(store, result, time.Now().UTC())
+	return err
 }
