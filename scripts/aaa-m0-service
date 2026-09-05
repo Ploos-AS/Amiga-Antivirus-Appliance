@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+DATA_ROOT=${AAA_DATA_ROOT:-/data/aaa}
+
+[ -d "$DATA_ROOT" ] || {
+    echo "AAA data root missing: $DATA_ROOT" >&2
+    exit 1
+}
+
+echo "AAA M0 placeholder service started; data root: $DATA_ROOT"
+
+while :; do
+    sleep 3600 &
+    wait $!
+done
