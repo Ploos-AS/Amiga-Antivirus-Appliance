@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path"
+
+	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/hunk"
 )
 
 const (
@@ -26,6 +28,7 @@ type FilesystemEntry struct {
 	Type        string               `json:"type"`
 	HeaderBlock uint32               `json:"header_block"`
 	Payload     *FilePayloadAnalysis `json:"payload,omitempty"`
+	Hunk        *hunk.Analysis       `json:"hunk,omitempty"`
 }
 
 type FilesystemAnalysis struct {
@@ -33,12 +36,14 @@ type FilesystemAnalysis struct {
 	RootBlockValid bool              `json:"root_block_valid"`
 	FileCount      int               `json:"file_count"`
 	DirectoryCount int               `json:"directory_count"`
+	HunkFileCount  int               `json:"hunk_file_count"`
 	Entries        []FilesystemEntry `json:"entries,omitempty"`
 	Warnings       []string          `json:"warnings,omitempty"`
 }
 
 // AnalyzeFilesystem enumerates OFS/FFS directory and file header blocks and,
-// for files, reconstructs payload bytes far enough to report size and SHA-256.
+// for files, reconstructs payload bytes far enough to report size, SHA-256,
+// and Amiga Hunk metadata when the payload is a recognized executable.
 // Corrupt metadata is reported as warnings so the preservation scanner can
 // still report the disk rather than silently dropping it.
 func AnalyzeFilesystem(pathname string) (*FilesystemAnalysis, error) {
@@ -125,7 +130,18 @@ func walkDirectory(image, dirBlock []byte, parent string, depth int, dosType uin
 			switch secondary {
 			case secondaryFile:
 				payload := analyzeFilePayload(image, current, dosType)
-				result.Entries = append(result.Entries, FilesystemEntry{Path: entryPath, Name: name, Type: "file", HeaderBlock: current, Payload: &payload})
+				entry := FilesystemEntry{Path: entryPath, Name: name, Type: "file", HeaderBlock: current, Payload: &payload}
+				if payload.Complete {
+					hunkAnalysis := hunk.Analyze(payload.data)
+					if hunkAnalysis.Recognized {
+						entry.Hunk = hunkAnalysis
+						result.HunkFileCount++
+						for _, warning := range hunkAnalysis.Warnings {
+							result.Warnings = append(result.Warnings, fmt.Sprintf("file %s hunk: %s", entryPath, warning))
+						}
+					}
+				}
+				result.Entries = append(result.Entries, entry)
 				result.FileCount++
 				if payload.Warning != "" {
 					result.Warnings = append(result.Warnings, fmt.Sprintf("file %s: %s", entryPath, payload.Warning))
