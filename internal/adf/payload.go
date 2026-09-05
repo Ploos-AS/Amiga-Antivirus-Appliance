@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	fileByteSizeWord = 81
+	fileByteSizeWord  = 81
 	fileExtensionWord = 126
-	fileDataBaseWord = 6
-	fileDataSlots = 72
-	primaryDataType = 8
-	primaryListType = 16
+	fileDataBaseWord  = 6
+	fileDataSlots     = 72
+	primaryDataType   = 8
+	primaryListType   = 16
 )
 
 type FilePayloadAnalysis struct {
