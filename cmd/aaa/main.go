@@ -9,7 +9,7 @@ import (
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanner"
 )
 
-const version = "0.2.0-dev"
+const version = "0.3.0-dev"
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "AAA — Amiga AntiVirus Appliance\n\n")
@@ -75,8 +75,18 @@ func scanCommand(args []string) {
 		fmt.Printf("Disk:     %s (%d blocks)\n", result.ADF.DiskType, result.ADF.Blocks)
 		fmt.Printf("DOS type: DOS\\%d (%s)\n", result.ADF.DOSVersion, result.ADF.Filesystem)
 		fmt.Printf("Bootable: %t\n", result.ADF.Bootable)
+		fmt.Printf("Boot SHA: %s\n", result.ADF.BootblockSHA256)
 		fmt.Printf("Boot CRC: stored=%08x calculated=%08x valid=%t\n", result.ADF.StoredChecksum, result.ADF.CalculatedChecksum, result.ADF.ChecksumValid)
 		fmt.Printf("Root:     %d expected=%d plausible=%t\n", result.ADF.RootBlock, result.ADF.ExpectedRootBlock, result.ADF.RootBlockPlausible)
+		if result.BootblockMatch == nil {
+			fmt.Printf("Boot DB:  unknown\n")
+		} else {
+			fmt.Printf("Boot DB:  %s — %s\n", result.BootblockMatch.Status, result.BootblockMatch.Name)
+			fmt.Printf("Source:   %s\n", result.BootblockMatch.Source)
+		}
+	}
+	if result.Detection != "" {
+		fmt.Printf("Detect:   %s\n", result.Detection)
 	}
 	fmt.Printf("Verdict:  %s\n", result.Verdict)
 }
