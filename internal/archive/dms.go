@@ -21,25 +21,39 @@ const (
 // expanded image is written to a temporary host path. The output is bounded by
 // MaxExpandedSize and the subprocess is killed when dmsDecodeTimeout expires.
 func DecodeDMS(data []byte) ([]byte, *Analysis, error) {
+	return DecodeDMSLimited(data, MaxExpandedSize)
+}
+
+// DecodeDMSLimited expands a DMS image while enforcing a caller-supplied
+// output ceiling. Nested scanners use this to pass the remaining per-job
+// expansion budget into xDMS before any output is accepted into memory.
+func DecodeDMSLimited(data []byte, maxExpanded int64) ([]byte, *Analysis, error) {
 	executable := os.Getenv("AAA_XDMS")
 	if executable == "" {
 		executable = "xdms"
 	}
-	return decodeDMSWithExecutable(data, executable)
+	return decodeDMSWithExecutableLimited(data, executable, maxExpanded)
 }
 
 func decodeDMSWithExecutable(data []byte, executable string) ([]byte, *Analysis, error) {
+	return decodeDMSWithExecutableLimited(data, executable, MaxExpandedSize)
+}
+
+func decodeDMSWithExecutableLimited(data []byte, executable string, maxExpanded int64) ([]byte, *Analysis, error) {
 	if len(data) < 4 || string(data[:4]) != "DMS!" {
 		return nil, nil, fmt.Errorf("not a recognized DMS stream")
 	}
 	if executable == "" {
 		return nil, nil, fmt.Errorf("xDMS executable is not configured")
 	}
+	if maxExpanded <= 0 || maxExpanded > MaxExpandedSize {
+		return nil, nil, fmt.Errorf("invalid DMS expansion limit %d", maxExpanded)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), dmsDecodeTimeout)
 	defer cancel()
 
-	stdout := &cappedBuffer{limit: MaxExpandedSize}
+	stdout := &cappedBuffer{limit: maxExpanded}
 	stderr := &cappedBuffer{limit: maxToolStderr}
 	cmd := exec.CommandContext(ctx, executable, "-q", "u", "stdin", "+stdout")
 	cmd.Stdin = bytes.NewReader(data)
@@ -51,7 +65,7 @@ func decodeDMSWithExecutable(data []byte, executable string) ([]byte, *Analysis,
 		return nil, nil, fmt.Errorf("xDMS decode exceeded %s timeout", dmsDecodeTimeout)
 	}
 	if stdout.exceeded {
-		return nil, nil, fmt.Errorf("expanded DMS exceeds %d-byte safety limit", MaxExpandedSize)
+		return nil, nil, fmt.Errorf("expanded DMS exceeds %d-byte safety limit", maxExpanded)
 	}
 	if err != nil {
 		if stderr.Len() > 0 {
