@@ -57,6 +57,14 @@ Future confidence/promotion policy may use independent-source counts, but it mus
 
 When the native scanner creates a candidate from a known-malicious bootblock database match, the evidence record is attributed to `aaa-native` and receives a stable correlation key rooted in the bootblock database provenance source. The containing sample SHA-256 and exact bootblock SHA-256 remain distinct candidate fields as defined by M7.0.
 
+## ClamAV evidence
+
+M7.1 includes a strict ClamAV normalization helper for attributable `clamscan` results. A `FOUND` result becomes `engine-detection` evidence only when the detection name, ClamAV engine version and signature database version are all known. Clean (`OK`) and unrelated/error output do not become malware evidence.
+
+The common `clamscan --version` form `ClamAV <engine>/<database>/<build-date>` is parsed into separate engine and database identities. Build dates are not used as source identity. The correlation key is `clamav-db:<database version>`, so multiple wrappers or ClamAV engine revisions using the same underlying database count once for independence calculations.
+
+Missing database identity fails closed instead of inventing provenance. Raw result text may be retained as a single-line evidence detail, but control/newline content is rejected. The helper does not execute ClamAV and does not change the native scan verdict by itself; execution/integration can be layered on top without duplicating provenance policy.
+
 ## Historical engines
 
 M8 adapters will eventually feed normalized evidence into this model for:
@@ -82,4 +90,12 @@ The first M7.1 slice is code-qualified when:
 - tests use synthetic evidence only;
 - gofmt, vet, tests and amd64/arm64 builds pass.
 
-Further M7.1 work will add adapters/helpers for importing normalized evidence from ClamAV and later historical-engine results before M7.2 export work begins.
+The ClamAV provenance slice additionally requires:
+
+- strict parsing of the common ClamAV engine/database version form;
+- deterministic parsing of `FOUND` versus `OK` result lines;
+- a normalized ClamAV evidence constructor that requires engine and signature database identity;
+- correlation by ClamAV database identity rather than frontend or engine revision;
+- synthetic-only tests covering positive, clean and fail-closed cases.
+
+Further M7.1 work will connect the normalized evidence helpers to executable engine adapters and later historical-engine results before M7.2 export work begins.
