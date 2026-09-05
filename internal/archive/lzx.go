@@ -1,7 +1,6 @@
 package archive
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -169,5 +168,3 @@ func extractLZXMember(executable, archivePath, memberName string, maxExpanded in
 	}
 	return append([]byte(nil), stdout.Bytes()...), nil
 }
-
-var _ = bytes.MinRead
