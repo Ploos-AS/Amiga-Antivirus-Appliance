@@ -14,6 +14,7 @@ import (
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/adf"
 	archivepkg "github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/archive"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/hunk"
+	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/preservation"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/signatures"
 )
 
@@ -36,19 +37,20 @@ type MemberResult struct {
 }
 
 type Result struct {
-	Path           string                  `json:"path"`
-	Name           string                  `json:"name"`
-	Size           int64                   `json:"size"`
-	SHA256         string                  `json:"sha256"`
-	Format         string                  `json:"format"`
-	Verdict        string                  `json:"verdict"`
-	Detection      string                  `json:"detection,omitempty"`
-	Archive        *archivepkg.Analysis    `json:"archive,omitempty"`
-	MemberResults  []MemberResult          `json:"member_results,omitempty"`
-	ADF            *adf.Analysis           `json:"adf,omitempty"`
-	Filesystem     *adf.FilesystemAnalysis `json:"filesystem,omitempty"`
-	Hunk           *hunk.Analysis          `json:"hunk,omitempty"`
-	BootblockMatch *signatures.Match       `json:"bootblock_match,omitempty"`
+	Path              string                  `json:"path"`
+	Name              string                  `json:"name"`
+	Size              int64                   `json:"size"`
+	SHA256            string                  `json:"sha256"`
+	Format            string                  `json:"format"`
+	Verdict           string                  `json:"verdict"`
+	Detection         string                  `json:"detection,omitempty"`
+	Archive           *archivepkg.Analysis    `json:"archive,omitempty"`
+	PreservationImage *preservation.Analysis  `json:"preservation_image,omitempty"`
+	MemberResults     []MemberResult          `json:"member_results,omitempty"`
+	ADF               *adf.Analysis           `json:"adf,omitempty"`
+	Filesystem        *adf.FilesystemAnalysis `json:"filesystem,omitempty"`
+	Hunk              *hunk.Analysis          `json:"hunk,omitempty"`
+	BootblockMatch    *signatures.Match       `json:"bootblock_match,omitempty"`
 }
 
 type archiveBudget struct {
@@ -126,6 +128,21 @@ func ScanFile(path string) (Result, error) {
 		result.Archive = archiveAnalysis
 		if err := analyzeADFBytes(&result, expanded); err != nil {
 			return Result{}, fmt.Errorf("analyze expanded DMS ADF: %w", err)
+		}
+	case "ipf":
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return Result{}, fmt.Errorf("read IPF: %w", err)
+		}
+		derived, preservationAnalysis, err := preservation.DecodeIPF(data)
+		if err != nil {
+			return Result{}, fmt.Errorf("decode IPF: %w", err)
+		}
+		result.PreservationImage = preservationAnalysis
+		if len(derived) > 0 {
+			if err := analyzeADFBytes(&result, derived); err != nil {
+				return Result{}, fmt.Errorf("analyze derived IPF sector image: %w", err)
+			}
 		}
 	case "zip", "lha", "lzx":
 		data, err := os.ReadFile(path)
@@ -452,6 +469,8 @@ func DetectFormat(path string, head []byte, size int64) string {
 		return "lha-unrecognized"
 	case ".lzx":
 		return "lzx"
+	case ".ipf":
+		return "ipf"
 	case ".hdf":
 		return "hdf"
 	}
