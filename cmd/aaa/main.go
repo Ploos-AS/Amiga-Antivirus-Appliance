@@ -9,7 +9,7 @@ import (
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanner"
 )
 
-const version = "0.3.0-dev"
+const version = "0.4.0-dev"
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "AAA — Amiga AntiVirus Appliance\n\n")
@@ -78,6 +78,16 @@ func scanCommand(args []string) {
 		fmt.Printf("Boot SHA: %s\n", result.ADF.BootblockSHA256)
 		fmt.Printf("Boot CRC: stored=%08x calculated=%08x valid=%t\n", result.ADF.StoredChecksum, result.ADF.CalculatedChecksum, result.ADF.ChecksumValid)
 		fmt.Printf("Root:     %d expected=%d plausible=%t\n", result.ADF.RootBlock, result.ADF.ExpectedRootBlock, result.ADF.RootBlockPlausible)
+		if result.Filesystem != nil {
+			fmt.Printf("FS root:  %d valid=%t\n", result.Filesystem.RootBlock, result.Filesystem.RootBlockValid)
+			fmt.Printf("FS items: %d files, %d directories\n", result.Filesystem.FileCount, result.Filesystem.DirectoryCount)
+			for _, entry := range result.Filesystem.Entries {
+				fmt.Printf("  %-9s %s [block %d]\n", entry.Type, entry.Path, entry.HeaderBlock)
+			}
+			for _, warning := range result.Filesystem.Warnings {
+				fmt.Printf("FS warn:  %s\n", warning)
+			}
+		}
 		if result.BootblockMatch == nil {
 			fmt.Printf("Boot DB:  unknown\n")
 		} else {
