@@ -131,6 +131,139 @@ func TestExportNativeBootblocksRejectsDuplicateHash(t *testing.T) {
 	}
 }
 
+func TestExportClamAVHashesPromotedClamAVOnly(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	promoted := mustExactCandidate(t, ExactCandidateInput{
+		Family:             "ClamTest",
+		Kind:               KindFileSHA256,
+		MalwareName:        "Win.Test.Clam",
+		SampleSHA256:       strings.Repeat("6", 64),
+		SampleSize:         1234,
+		SourceEngine:       ClamAVEngineName,
+		SourceVersion:      "1.4.3",
+		SignatureDBVersion: "27800",
+		DetectionName:      "Win.Test.Clam",
+		Confidence:         ConfidenceSingleEngine,
+		CreatedAt:          time.Unix(4, 0).UTC(),
+	})
+	if _, err := store.WriteCandidate(promoted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Promote(promoted.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	pending := mustExactCandidate(t, ExactCandidateInput{
+		Family:        "PendingClam",
+		Kind:          KindFileSHA256,
+		MalwareName:   "Win.Pending.Clam",
+		SampleSHA256:  strings.Repeat("7", 64),
+		SampleSize:    2345,
+		SourceEngine:  ClamAVEngineName,
+		DetectionName: "Win.Pending.Clam",
+		Confidence:    ConfidenceSingleEngine,
+		CreatedAt:     time.Unix(5, 0).UTC(),
+	})
+	if _, err := store.WriteCandidate(pending); err != nil {
+		t.Fatal(err)
+	}
+
+	native := mustExactCandidate(t, ExactCandidateInput{
+		Family:        "NativeFile",
+		Kind:          KindFileSHA256,
+		MalwareName:   "Native File",
+		SampleSHA256:  strings.Repeat("8", 64),
+		SampleSize:    3456,
+		SourceEngine:  "aaa-native",
+		DetectionName: "Native.File",
+		Confidence:    ConfidenceConfirmed,
+		CreatedAt:     time.Unix(6, 0).UTC(),
+	})
+	if _, err := store.WriteCandidate(native); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Promote(native.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	path, count, err := store.ExportClamAVHashes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("count = %d, want 1", count)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := promoted.SampleSHA256 + ":1234:Win.Test.Clam\n"
+	if string(data) != want {
+		t.Fatalf("output = %q, want %q", data, want)
+	}
+}
+
+func TestExportClamAVHashesRejectsUnsafeName(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := mustExactCandidate(t, ExactCandidateInput{
+		Family:        "UnsafeName",
+		Kind:          KindFileSHA256,
+		MalwareName:   "Unsafe:Name",
+		SampleSHA256:  strings.Repeat("9", 64),
+		SampleSize:    10,
+		SourceEngine:  ClamAVEngineName,
+		DetectionName: "Unsafe:Name",
+		Confidence:    ConfidenceSingleEngine,
+		CreatedAt:     time.Unix(7, 0).UTC(),
+	})
+	if _, err := store.WriteCandidate(candidate); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Promote(candidate.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.ExportClamAVHashes(); err == nil {
+		t.Fatal("expected unsafe ClamAV signature name to fail")
+	}
+}
+
+func TestExportClamAVHashesRejectsDuplicateHash(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := strings.Repeat("a", 64)
+	for i, family := range []string{"ClamOne", "ClamTwo"} {
+		candidate := mustExactCandidate(t, ExactCandidateInput{
+			Family:        family,
+			Kind:          KindFileSHA256,
+			MalwareName:   family,
+			SampleSHA256:  hash,
+			SampleSize:    int64(100 + i),
+			SourceEngine:  ClamAVEngineName,
+			DetectionName: family,
+			Confidence:    ConfidenceSingleEngine,
+			CreatedAt:     time.Unix(int64(8+i), 0).UTC(),
+		})
+		if _, err := store.WriteCandidate(candidate); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.Promote(candidate.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := store.ExportClamAVHashes(); err == nil {
+		t.Fatal("expected duplicate ClamAV hash to fail")
+	}
+}
+
 func TestListPromotedFailsClosedOnWrongStatus(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {
