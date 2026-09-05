@@ -126,7 +126,7 @@ func ScanFile(path string) (Result, error) {
 		if err := analyzeADFBytes(&result, expanded); err != nil {
 			return Result{}, fmt.Errorf("analyze expanded DMS ADF: %w", err)
 		}
-	case "zip", "lha":
+	case "zip", "lha", "lzx":
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return Result{}, fmt.Errorf("read %s: %w", format, err)
@@ -156,6 +156,8 @@ func decodeArchive(format string, data []byte) ([]archivepkg.ExpandedMember, *ar
 		return archivepkg.DecodeZIP(data)
 	case "lha":
 		return archivepkg.DecodeLHA(data)
+	case "lzx":
+		return archivepkg.DecodeLZX(data)
 	default:
 		return nil, nil, fmt.Errorf("unsupported archive format: %s", format)
 	}
@@ -221,7 +223,7 @@ func scanMemberPayload(memberResult *MemberResult, data []byte, depth int, budge
 			return
 		}
 		copyADFResult(memberResult, &tmp)
-	case "zip", "lha":
+	case "zip", "lha", "lzx":
 		if depth >= MaxArchiveDepth {
 			memberResult.Error = fmt.Sprintf("nested archive depth exceeds limit %d", MaxArchiveDepth)
 			return
@@ -376,7 +378,7 @@ func DetectFormat(path string, head []byte, size int64) string {
 	case ".lha", ".lzh":
 		return "lha-unrecognized"
 	case ".lzx":
-		return "lzx-unrecognized"
+		return "lzx"
 	case ".hdf":
 		return "hdf"
 	}
