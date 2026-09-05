@@ -76,7 +76,7 @@ func scanCommand(args []string) {
 		fmt.Printf("DOS type: DOS\\%d (%s)\n", result.ADF.DOSVersion, result.ADF.Filesystem)
 		fmt.Printf("Bootable: %t\n", result.ADF.Bootable)
 		fmt.Printf("Boot SHA: %s\n", result.ADF.BootblockSHA256)
-		fmt.Printf("Boot CRC: stored=%08x calculated=%08x valid=%t\n", result.ADF.StoredChecksum, result.ADF.CalculatedChecksum, result.ADF.ChecksumValid)
+		fmt.Printf("Checksum: stored=%08x calculated=%08x valid=%t\n", result.ADF.StoredChecksum, result.ADF.CalculatedChecksum, result.ADF.ChecksumValid)
 		fmt.Printf("Root:     %d expected=%d plausible=%t\n", result.ADF.RootBlock, result.ADF.ExpectedRootBlock, result.ADF.RootBlockPlausible)
 		if result.Filesystem != nil {
 			fmt.Printf("FS root:  %d valid=%t\n", result.Filesystem.RootBlock, result.Filesystem.RootBlockValid)
@@ -103,6 +103,12 @@ func scanCommand(args []string) {
 		} else {
 			fmt.Printf("Boot DB:  %s — %s\n", result.BootblockMatch.Status, result.BootblockMatch.Name)
 			fmt.Printf("Source:   %s\n", result.BootblockMatch.Source)
+		}
+	}
+	if result.Hunk != nil {
+		fmt.Printf("Hunk:     recognized=%t segments=%d code=%d data=%d bss=%d bytes\n", result.Hunk.Recognized, result.Hunk.HunkCount, result.Hunk.CodeBytes, result.Hunk.DataBytes, result.Hunk.BSSBytes)
+		for _, warning := range result.Hunk.Warnings {
+			fmt.Printf("Hunk warn: %s\n", warning)
 		}
 	}
 	if result.Detection != "" {
