@@ -78,11 +78,13 @@ func TestDecodeCorpusValidationResultStrictRejectsUnknownAndTrailingData(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	withUnknown := append(encoded[:len(encoded)-1], []byte(`,"unknown":true}`)...)
+	withUnknown := append([]byte(nil), encoded[:len(encoded)-1]...)
+	withUnknown = append(withUnknown, []byte(`,"unknown":true}`)...)
 	if _, err := DecodeCorpusValidationResultStrict(withUnknown); err == nil {
 		t.Fatal("expected unknown validation field to fail")
 	}
-	withTrailing := append(encoded, []byte(` {}`)...)
+	withTrailing := append([]byte(nil), encoded...)
+	withTrailing = append(withTrailing, []byte(` {}`)...)
 	if _, err := DecodeCorpusValidationResultStrict(withTrailing); err == nil {
 		t.Fatal("expected trailing validation data to fail")
 	}
