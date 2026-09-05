@@ -22,7 +22,7 @@ type DistributionTarget string
 
 const (
 	DistributionTargetAAABootblocks DistributionTarget = "aaa-bootblocks"
-	DistributionTargetClamAVHashes   DistributionTarget = "clamav-hashes"
+	DistributionTargetClamAVHashes  DistributionTarget = "clamav-hashes"
 )
 
 var releaseVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
