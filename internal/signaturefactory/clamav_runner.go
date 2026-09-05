@@ -61,7 +61,10 @@ func runClamAVWithExecutable(path, executable string, scanTimeout time.Duration)
 		return ClamAVScanResult{}, fmt.Errorf("parse ClamAV version: %w", err)
 	}
 
-	scanOutput, err := runClamAVCommand(executable, scanTimeout, "--no-summary", "--stdout", "--", path)
+	// AAA owns archive expansion and member-level analysis. Keep ClamAV on the
+	// exact host file only so one external engine cannot silently recurse into
+	// archives using a different, unbounded expansion policy.
+	scanOutput, err := runClamAVCommand(executable, scanTimeout, "--no-summary", "--stdout", "--scan-archive=no", "--", path)
 	if err != nil && scanOutput.exitCode != 1 {
 		return ClamAVScanResult{}, fmt.Errorf("ClamAV scan failed: %w", err)
 	}
