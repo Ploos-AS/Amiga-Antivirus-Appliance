@@ -125,6 +125,10 @@ func DecodeZIP(data []byte) ([]ExpandedMember, *Analysis, error) {
 // Unsupported methods fail closed. Member names are metadata only and are never
 // interpreted as host filesystem paths.
 func DecodeLHA(data []byte) ([]ExpandedMember, *Analysis, error) {
+	if !looksLikeLHA(data) {
+		return nil, nil, fmt.Errorf("not a recognized LHA/LZH stream")
+	}
+
 	r := lha.NewReader(bytes.NewReader(data))
 	analysis := &Analysis{Format: "lha"}
 	expanded := make([]ExpandedMember, 0)
@@ -162,8 +166,24 @@ func DecodeLHA(data []byte) ([]ExpandedMember, *Analysis, error) {
 		appendMember(analysis, &expanded, lhaMemberName(h), memberData)
 	}
 
+	if len(expanded) == 0 {
+		return nil, nil, fmt.Errorf("LHA contains no decodable file members")
+	}
 	analysis.ExpandedSize = total
 	return expanded, analysis, nil
+}
+
+func looksLikeLHA(data []byte) bool {
+	if len(data) < 21 {
+		return false
+	}
+	method := string(data[2:7])
+	switch method {
+	case "-lh0-", "-lh4-", "-lh5-", "-lh6-", "-lh7-", "-lhd-":
+		return data[20] <= 3
+	default:
+		return false
+	}
 }
 
 func lhaMemberName(h *lha.Header) string {
