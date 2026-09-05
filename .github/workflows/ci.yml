@@ -17,6 +17,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Validate research manifests
+        run: python3 -m json.tool research/bootblock-sources.json >/dev/null
       - name: Format check
         run: test -z "$(gofmt -l cmd internal)"
       - name: Vet
