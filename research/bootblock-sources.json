@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "sources": [
+    {
+      "id": "virus-executor-preservation",
+      "name": "VirusExecutor preservation source",
+      "kind": "metadata",
+      "repository": "ResistanceVault/preservation-virus-executor",
+      "revision": "9a364275edbcbc90217f6ea1550c518c89f42d5f",
+      "license": "GPL-3.0",
+      "status": "qualified-for-corroboration",
+      "supports": [
+        "historical bootblock-virus names",
+        "scanner capability corroboration",
+        "bootblock database design research"
+      ],
+      "does_not_support": [
+        "direct AAA SHA-256 admission without exact 1024-byte specimen bytes"
+      ],
+      "notes": "Historical VirusExecutor material names bootblock viruses and documents bootblock analysis/database functionality. Treat as corroboration until exact specimen bytes are independently available and classified."
+    }
+  ]
+}
