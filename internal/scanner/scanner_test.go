@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/adf"
+	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/signatures"
 )
 
 func TestDetectFormatADF(t *testing.T) {
@@ -82,10 +83,34 @@ func TestScanFileIncludesADFAnalysis(t *testing.T) {
 	if got.Format != "adf" || got.ADF == nil {
 		t.Fatalf("missing ADF analysis: %+v", got)
 	}
-	if got.ADF.Filesystem != "FFS" || !got.ADF.ChecksumValid || got.ADF.RootBlock != 880 {
+	if got.ADF.Filesystem != "FFS" || !got.ADF.ChecksumValid || got.ADF.RootBlock != 880 || len(got.ADF.BootblockSHA256) != 64 {
 		t.Fatalf("unexpected ADF analysis: %+v", got.ADF)
 	}
 	if got.Verdict != "unknown" {
-		t.Fatalf("M2 must not infer malware verdict: %q", got.Verdict)
+		t.Fatalf("unknown bootblock must remain unknown: %q", got.Verdict)
+	}
+}
+
+func TestMaliciousBootblockSetsInfected(t *testing.T) {
+	hash := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	db := &signatures.Database{Schema: 1, Entries: []signatures.Entry{{
+		SHA256: hash, Status: signatures.StatusKnownMalicious, Name: "Test Virus", Source: "unit-test",
+	}}}
+	result := Result{Verdict: "unknown", ADF: &adf.Analysis{BootblockSHA256: hash}}
+	applyBootblockDatabase(&result, db)
+	if result.Verdict != "infected" || result.Detection != "bootblock:Test Virus" || result.BootblockMatch == nil {
+		t.Fatalf("unexpected malicious classification: %+v", result)
+	}
+}
+
+func TestKnownCleanBootblockDoesNotMarkDiskClean(t *testing.T) {
+	hash := "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+	db := &signatures.Database{Schema: 1, Entries: []signatures.Entry{{
+		SHA256: hash, Status: signatures.StatusKnownClean, Name: "Known clean bootblock", Source: "unit-test",
+	}}}
+	result := Result{Verdict: "unknown", ADF: &adf.Analysis{BootblockSHA256: hash}}
+	applyBootblockDatabase(&result, db)
+	if result.Verdict != "unknown" || result.Detection != "" || result.BootblockMatch == nil || result.BootblockMatch.Status != signatures.StatusKnownClean {
+		t.Fatalf("known-clean bootblock must not imply clean disk: %+v", result)
 	}
 }
