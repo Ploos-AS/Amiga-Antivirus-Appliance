@@ -43,6 +43,13 @@ func (s *Store) ValidateCandidates() error {
 }
 
 func (s *Store) Promote(id string) (Candidate, error) {
+	candidate, err := s.ReadCandidate(id)
+	if err != nil {
+		return Candidate{}, err
+	}
+	if candidate.Kind == KindPattern {
+		return Candidate{}, errors.New("pattern candidates require a passing M7.3 corpus validation result")
+	}
 	return s.transition(id, StatusPromoted, "promoted")
 }
 
