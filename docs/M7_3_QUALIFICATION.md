@@ -2,9 +2,9 @@
 
 ## Status
 
-**Qualification record pending final CI.**
+**Code-qualified.**
 
-The complete M7.3 implementation mechanics are present and the implementation HEAD below has passed the normal GitHub Actions CI gates. This record is committed separately so that the final code-qualified state can identify an exact green documentation HEAD before M7.3 is closed.
+The complete M7.3 implementation mechanics and this qualification record have passed the normal GitHub Actions CI gates. M7.3 is closed for code qualification; real historical corpus qualification remains a separate, explicitly pending data-qualification activity.
 
 ## Qualified scope
 
@@ -112,13 +112,19 @@ M7.3d and the strict-decoder fixture correction are green on GitHub Actions CI r
 
 Run #201 completed successfully across the normal repository gates, including format check, module metadata, `go vet`, tests, linux/amd64 build and linux/arm64 build.
 
+The qualification record itself was then committed at:
+
+```text
+8e643021b983a9a82a722d09b1585d08b183057d
+```
+
+GitHub Actions CI run **#202** completed successfully on that documentation HEAD, satisfying the final M7.3 exit requirement.
+
 Earlier slice qualification was also green:
 
 - M7.3a corpus manifests: CI #191;
 - M7.3b fixed-pattern candidates: CI #193;
 - M7.3c deterministic corpus matching: CI #195.
-
-The final documentation HEAD containing this record must also pass CI before the milestone status is changed to **Code-qualified**.
 
 ## Real-corpus status
 
@@ -141,4 +147,4 @@ M7.3 does not claim completion of:
 
 ## Exit decision
 
-The implementation mechanics satisfy the M7.3 fail-closed contract on the green implementation HEAD above. M7.3 will be closed as **code-qualified** only after this qualification record itself receives a green CI result and that final HEAD is recorded exactly.
+M7.3 satisfies its code-qualification criteria and is closed as **code-qualified**. Development may proceed to **M7.4 — signed/versioned signature distribution** without treating real-corpus qualification, historical-engine runtime qualification, or Orange Pi appliance qualification as complete.
