@@ -27,6 +27,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  aaa signatures promote <id>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures reject <id>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures export aaa\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures export clamav\n")
 	fmt.Fprintf(os.Stderr, "  aaa version\n")
 }
 
