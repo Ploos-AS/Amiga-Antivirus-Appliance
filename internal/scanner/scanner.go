@@ -9,16 +9,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/adf"
 )
 
 type Result struct {
-	Path      string `json:"path"`
-	Name      string `json:"name"`
-	Size      int64  `json:"size"`
-	SHA256    string `json:"sha256"`
-	Format    string `json:"format"`
-	Verdict   string `json:"verdict"`
-	Detection string `json:"detection,omitempty"`
+	Path      string        `json:"path"`
+	Name      string        `json:"name"`
+	Size      int64         `json:"size"`
+	SHA256    string        `json:"sha256"`
+	Format    string        `json:"format"`
+	Verdict   string        `json:"verdict"`
+	Detection string        `json:"detection,omitempty"`
+	ADF       *adf.Analysis `json:"adf,omitempty"`
 }
 
 func ScanFile(path string) (Result, error) {
@@ -52,19 +55,29 @@ func ScanFile(path string) (Result, error) {
 	}
 
 	format := DetectFormat(path, head, info.Size())
-	return Result{
+	result := Result{
 		Path:    path,
 		Name:    filepath.Base(path),
 		Size:    info.Size(),
 		SHA256:  hex.EncodeToString(h.Sum(nil)),
 		Format:  format,
 		Verdict: "unknown",
-	}, nil
+	}
+
+	if format == "adf" {
+		analysis, err := adf.AnalyzeFile(path)
+		if err != nil {
+			return Result{}, fmt.Errorf("analyze ADF: %w", err)
+		}
+		result.ADF = analysis
+	}
+
+	return result, nil
 }
 
 func DetectFormat(path string, head []byte, size int64) string {
 	if len(head) >= 4 && string(head[:3]) == "DOS" && head[3] <= 7 {
-		if size == 901120 || size == 1802240 {
+		if size == adf.DDSize || size == adf.HDSize {
 			return "adf"
 		}
 		return "amiga-filesystem-image"
