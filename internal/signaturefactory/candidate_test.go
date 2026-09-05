@@ -86,20 +86,143 @@ func TestCandidateRejectsUppercaseSHA256(t *testing.T) {
 	}
 }
 
-func TestPatternCandidateDisabledInM70(t *testing.T) {
-	candidate := Candidate{
-		Schema:        SchemaVersion,
-		ID:            "AAA.Amiga.TestVirus.0123456789abcdef",
-		Status:        StatusCandidate,
-		Kind:          KindPattern,
+func TestNewPatternCandidateAnyOffset(t *testing.T) {
+	sampleHash := strings.Repeat("ab", 32)
+	pattern := FixedPattern{BytesHex: "0011223344556677"}
+	candidate, err := NewPatternCandidate(PatternCandidateInput{
+		Family:        "TestVirus",
 		MalwareName:   "Test Virus",
+		SampleSHA256:  sampleHash,
+		SampleSize:    1234,
+		Format:        "amiga-hunk-executable",
+		Pattern:       pattern,
+		SourceEngine:  "aaa-native",
+		DetectionName: "synthetic-pattern",
+		Confidence:    ConfidenceConfirmed,
+		CreatedAt:     time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := pattern.IdentitySHA256()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate.ID != "AAA.Amiga.TestVirus."+identity[:16] {
+		t.Fatalf("unexpected pattern id %q", candidate.ID)
+	}
+	if candidate.Pattern == nil || candidate.Pattern.BytesHex != pattern.BytesHex || candidate.Pattern.Offset != nil {
+		t.Fatalf("unexpected pattern candidate: %+v", candidate)
+	}
+	if err := candidate.Validate(); err != nil {
+		t.Fatalf("generated pattern candidate failed validation: %v", err)
+	}
+}
+
+func TestPatternIdentityIncludesOffsetSemantics(t *testing.T) {
+	offset := int64(0)
+	anywhere := FixedPattern{BytesHex: "0011223344556677"}
+	fixed := FixedPattern{BytesHex: "0011223344556677", Offset: &offset}
+	anyHash, err := anywhere.IdentitySHA256()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixedHash, err := fixed.IdentitySHA256()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if anyHash == fixedHash {
+		t.Fatal("offset-constrained and unconstrained patterns must have different identities")
+	}
+}
+
+func TestPatternCandidateRejectsTooShortPattern(t *testing.T) {
+	_, err := NewPatternCandidate(PatternCandidateInput{
+		Family:        "TestVirus",
+		MalwareName:   "Test Virus",
+		SampleSHA256:  strings.Repeat("ab", 32),
+		Pattern:       FixedPattern{BytesHex: "00112233445566"},
 		SourceEngine:  "aaa-native",
 		DetectionName: "test",
 		Confidence:    ConfidenceConfirmed,
 		CreatedAt:     time.Now().UTC(),
-		CreatedBy:     CreatedBy,
+	})
+	if err == nil {
+		t.Fatal("expected pattern shorter than minimum to fail")
 	}
+}
+
+func TestPatternCandidateRejectsUppercaseOrOddHex(t *testing.T) {
+	for _, bytesHex := range []string{"00112233445566AABB", "001122334455667"} {
+		_, err := NewPatternCandidate(PatternCandidateInput{
+			Family:        "TestVirus",
+			MalwareName:   "Test Virus",
+			SampleSHA256:  strings.Repeat("ab", 32),
+			Pattern:       FixedPattern{BytesHex: bytesHex},
+			SourceEngine:  "aaa-native",
+			DetectionName: "test",
+			Confidence:    ConfidenceConfirmed,
+			CreatedAt:     time.Now().UTC(),
+		})
+		if err == nil {
+			t.Fatalf("expected unsafe pattern encoding %q to fail", bytesHex)
+		}
+	}
+}
+
+func TestPatternCandidateRejectsNegativeOffset(t *testing.T) {
+	offset := int64(-1)
+	_, err := NewPatternCandidate(PatternCandidateInput{
+		Family:        "TestVirus",
+		MalwareName:   "Test Virus",
+		SampleSHA256:  strings.Repeat("ab", 32),
+		Pattern:       FixedPattern{BytesHex: "0011223344556677", Offset: &offset},
+		SourceEngine:  "aaa-native",
+		DetectionName: "test",
+		Confidence:    ConfidenceConfirmed,
+		CreatedAt:     time.Now().UTC(),
+	})
+	if err == nil {
+		t.Fatal("expected negative pattern offset to fail")
+	}
+}
+
+func TestPatternCandidateIDMustMatchPatternIdentity(t *testing.T) {
+	candidate, err := NewPatternCandidate(PatternCandidateInput{
+		Family:        "TestVirus",
+		MalwareName:   "Test Virus",
+		SampleSHA256:  strings.Repeat("ab", 32),
+		Pattern:       FixedPattern{BytesHex: "0011223344556677"},
+		SourceEngine:  "aaa-native",
+		DetectionName: "test",
+		Confidence:    ConfidenceConfirmed,
+		CreatedAt:     time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate.ID = "AAA.Amiga.TestVirus.0123456789abcdef"
 	if err := candidate.Validate(); err == nil {
-		t.Fatal("expected pattern candidate to remain disabled")
+		t.Fatal("expected mismatched pattern identity to fail")
+	}
+}
+
+func TestExactCandidateRejectsPatternField(t *testing.T) {
+	candidate, err := NewExactCandidate(ExactCandidateInput{
+		Family:        "TestVirus",
+		Kind:          KindFileSHA256,
+		MalwareName:   "Test Virus",
+		SampleSHA256:  strings.Repeat("ab", 32),
+		SourceEngine:  "aaa-native",
+		DetectionName: "test",
+		Confidence:    ConfidenceConfirmed,
+		CreatedAt:     time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate.Pattern = &FixedPattern{BytesHex: "0011223344556677"}
+	if err := candidate.Validate(); err == nil {
+		t.Fatal("expected exact candidate with pattern field to fail")
 	}
 }
