@@ -13,10 +13,15 @@ import (
 
 const version = "0.6.0-dev"
 
+type scanJSONOutput struct {
+	Scan   scanner.Result                    `json:"scan"`
+	ClamAV *signaturefactory.ClamAVScanResult `json:"clamav,omitempty"`
+}
+
 func usage() {
 	fmt.Fprintf(os.Stderr, "AAA — Amiga AntiVirus Appliance\n\n")
 	fmt.Fprintf(os.Stderr, "Usage:\n")
-	fmt.Fprintf(os.Stderr, "  aaa scan [--json] <file>\n")
+	fmt.Fprintf(os.Stderr, "  aaa scan [--json] [--clamav] <file>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures candidates [--json]\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures validate\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures promote <id>\n")
@@ -50,6 +55,7 @@ func scanCommand(args []string) {
 	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
+	clamAVEnabled := fs.Bool("clamav", false, "also scan the exact input file with ClamAV")
 	if err := fs.Parse(args); err != nil {
 		os.Exit(2)
 	}
@@ -58,7 +64,8 @@ func scanCommand(args []string) {
 		os.Exit(2)
 	}
 
-	result, err := scanner.ScanFile(fs.Arg(0))
+	path := fs.Arg(0)
+	result, err := scanner.ScanFile(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "scan failed: %v\n", err)
 		os.Exit(1)
@@ -69,10 +76,30 @@ func scanCommand(args []string) {
 		}
 	}
 
+	var clamResult *signaturefactory.ClamAVScanResult
+	if *clamAVEnabled {
+		clam, err := signaturefactory.RunClamAV(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "clamav scan failed: %v\n", err)
+			os.Exit(1)
+		}
+		clamResult = &clam
+		if clam.Verdict == "infected" {
+			if err := recordClamAVCandidate(result, clam); err != nil {
+				fmt.Fprintf(os.Stderr, "signature factory warning: %v\n", err)
+			}
+		}
+	}
+
 	if *jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(result); err != nil {
+		if clamResult != nil {
+			if err := enc.Encode(scanJSONOutput{Scan: result, ClamAV: clamResult}); err != nil {
+				fmt.Fprintf(os.Stderr, "output failed: %v\n", err)
+				os.Exit(1)
+			}
+		} else if err := enc.Encode(result); err != nil {
 			fmt.Fprintf(os.Stderr, "output failed: %v\n", err)
 			os.Exit(1)
 		}
@@ -156,6 +183,12 @@ func scanCommand(args []string) {
 		fmt.Printf("Detect:   %s\n", result.Detection)
 	}
 	fmt.Printf("Verdict:  %s\n", result.Verdict)
+	if clamResult != nil {
+		fmt.Printf("ClamAV:   %s engine=%s db=%s\n", clamResult.Verdict, clamResult.EngineVersion, clamResult.SignatureDBVersion)
+		if clamResult.DetectionName != "" {
+			fmt.Printf("Clam detect: %s\n", clamResult.DetectionName)
+		}
+	}
 }
 
 func signaturesCommand(args []string) {
@@ -241,5 +274,14 @@ func recordSignatureCandidates(result scanner.Result) error {
 		return err
 	}
 	_, err = signaturefactory.RecordScanResult(store, result, time.Now().UTC())
+	return err
+}
+
+func recordClamAVCandidate(result scanner.Result, clam signaturefactory.ClamAVScanResult) error {
+	store, err := signaturefactory.NewStore(signaturefactory.StoreRootFromEnv())
+	if err != nil {
+		return err
+	}
+	_, _, err = signaturefactory.RecordClamAVResult(store, result, clam, time.Now().UTC())
 	return err
 }
