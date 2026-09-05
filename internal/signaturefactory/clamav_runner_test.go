@@ -15,7 +15,8 @@ if [ "$1" = "--version" ]; then
   echo "ClamAV 1.4.2/27777/Fri Sep  5 00:00:00 2026"
   exit 0
 fi
-echo "$4: Win.Test.EICAR_HDB-1 FOUND"
+[ "$3" = "--scan-archive=no" ] || { echo "archive recursion not disabled" >&2; exit 2; }
+echo "$5: Win.Test.EICAR_HDB-1 FOUND"
 exit 1
 `)
 
@@ -47,7 +48,8 @@ if [ "$1" = "--version" ]; then
   echo "ClamAV 1.4.2/27777/Fri Sep  5 00:00:00 2026"
   exit 0
 fi
-echo "$4: OK"
+[ "$3" = "--scan-archive=no" ] || { echo "archive recursion not disabled" >&2; exit 2; }
+echo "$5: OK"
 exit 0
 `)
 
@@ -88,7 +90,7 @@ if [ "$1" = "--version" ]; then
   exit 0
 fi
 sleep 1
-echo "$4: OK"
+echo "$5: OK"
 `)
 
 	_, err := runClamAVWithExecutable(target, executable, 50*time.Millisecond)
