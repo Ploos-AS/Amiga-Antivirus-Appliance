@@ -21,6 +21,7 @@ type FilePayloadAnalysis struct {
 	DataBlocks int    `json:"data_blocks"`
 	Complete   bool   `json:"complete"`
 	Warning    string `json:"warning,omitempty"`
+	data       []byte
 }
 
 func analyzeFilePayload(image []byte, headerNumber uint32, dosType uint8) FilePayloadAnalysis {
@@ -32,7 +33,8 @@ func analyzeFilePayload(image []byte, headerNumber uint32, dosType uint8) FilePa
 	fileSize := be32(header, fileByteSizeWord)
 	result := FilePayloadAnalysis{Size: fileSize}
 	if fileSize == 0 {
-		sum := sha256.Sum256(nil)
+		result.data = []byte{}
+		sum := sha256.Sum256(result.data)
 		result.SHA256 = hex.EncodeToString(sum[:])
 		result.Complete = true
 		return result
@@ -98,7 +100,8 @@ func analyzeFilePayload(image []byte, headerNumber uint32, dosType uint8) FilePa
 			result.DataBlocks++
 			if uint32(len(payload)) >= fileSize {
 				payload = payload[:fileSize]
-				sum := sha256.Sum256(payload)
+				result.data = append([]byte(nil), payload...)
+				sum := sha256.Sum256(result.data)
 				result.SHA256 = hex.EncodeToString(sum[:])
 				result.Complete = true
 				return result
