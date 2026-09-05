@@ -20,9 +20,12 @@ aaa version
 
 - **M0** — appliance foundation: code complete; Orange Pi/DietPi runtime qualification pending hardware arrival.
 - **M1** — `aaa` CLI, SHA-256 and format identification: code-qualified in CI for amd64 and arm64.
-- **M2** — classic ADF geometry and bootblock analysis: implemented; CI qualification required on the current HEAD.
+- **M2** — classic ADF geometry and bootblock analysis: code complete.
+- **M3** — exact bootblock SHA-256 matching and provenance-validated known-clean / known-malicious database: implemented.
 
-AAA does **not** yet claim malware detection. The verdict remains intentionally `unknown` until detection/signature milestones have sufficient evidence.
+M3 can declare an ADF `infected` when its bootblock exactly matches a known-malicious entry. A known-clean bootblock does not make the whole disk clean, because file-level scanning is not implemented yet.
+
+The production bootblock corpus starts empty intentionally. Real historical fingerprints are added only after provenance and classification have been verified; AAA does not invent signatures.
 
 ## Build and scan
 
@@ -32,7 +35,7 @@ go build -o aaa ./cmd/aaa
 ./aaa scan --json disk.adf
 ```
 
-For classic DD/HD ADF images, M2 reports geometry, DOS type/filesystem, boot-code presence, stored and calculated Amiga bootblock checksum, checksum validity, root-block pointer, expected root block, and root-pointer plausibility.
+For classic DD/HD ADF images, AAA reports geometry, DOS type/filesystem, boot-code presence, exact bootblock SHA-256, stored/calculated Amiga bootblock checksum, checksum validity, root-block pointer, and database match status.
 
 Example fields:
 
@@ -41,14 +44,16 @@ Format:   adf
 Disk:     dd (1760 blocks)
 DOS type: DOS\1 (FFS)
 Bootable: true
+Boot SHA: ...
 Boot CRC: stored=... calculated=... valid=true
 Root:     880 expected=880 plausible=true
+Boot DB:  unknown
 Verdict:  unknown
 ```
 
 M1 format identification also recognizes DMS, ADZ/gzip, LHA/LZH, ZIP and Amiga Hunk executables where content signatures are available. Extension-only hints are reported as unrecognized rather than validated.
 
-See `docs/M1_SPEC.md` and `docs/M2_SPEC.md` for the exact contracts.
+See `docs/M1_SPEC.md`, `docs/M2_SPEC.md`, and `docs/M3_SPEC.md` for the exact contracts.
 
 ## Persistent appliance layout
 
