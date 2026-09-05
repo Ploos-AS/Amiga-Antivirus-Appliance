@@ -1,6 +1,8 @@
 package scanner
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/binary"
 	"os"
 	"path/filepath"
@@ -63,14 +65,7 @@ func TestScanFileHashesAndClassifies(t *testing.T) {
 }
 
 func TestScanFileIncludesADFAnalysis(t *testing.T) {
-	image := make([]byte, adf.DDSize)
-	copy(image[:3], []byte("DOS"))
-	image[3] = 1
-	binary.BigEndian.PutUint32(image[8:12], 880)
-	image[12] = 0x4e
-	image[13] = 0xf9
-	binary.BigEndian.PutUint32(image[4:8], adf.CalculateBootblockChecksum(image[:adf.BootBlockSize]))
-
+	image := testADFImage()
 	path := filepath.Join(t.TempDir(), "disk.adf")
 	if err := os.WriteFile(path, image, 0600); err != nil {
 		t.Fatal(err)
@@ -88,6 +83,56 @@ func TestScanFileIncludesADFAnalysis(t *testing.T) {
 	}
 	if got.Verdict != "unknown" {
 		t.Fatalf("unknown bootblock must remain unknown: %q", got.Verdict)
+	}
+}
+
+func TestScanADZFeedsExpandedADFThroughPipeline(t *testing.T) {
+	image := testADFImage()
+	var compressed bytes.Buffer
+	zw := gzip.NewWriter(&compressed)
+	if _, err := zw.Write(image); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "disk.adz")
+	if err := os.WriteFile(path, compressed.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ScanFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Format != "adz" || got.Archive == nil || got.ADF == nil || got.Filesystem == nil {
+		t.Fatalf("missing ADZ pipeline analysis: %+v", got)
+	}
+	if got.Archive.ExpandedSize != adf.DDSize || len(got.Archive.Members) != 1 {
+		t.Fatalf("unexpected archive analysis: %+v", got.Archive)
+	}
+	if got.ADF.Filesystem != "FFS" || got.ADF.RootBlock != 880 || !got.ADF.ChecksumValid {
+		t.Fatalf("unexpected expanded ADF analysis: %+v", got.ADF)
+	}
+}
+
+func TestScanADZRejectsNonADFExpansion(t *testing.T) {
+	var compressed bytes.Buffer
+	zw := gzip.NewWriter(&compressed)
+	if _, err := zw.Write([]byte("not an ADF")); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "bad.adz")
+	if err := os.WriteFile(path, compressed.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ScanFile(path); err == nil {
+		t.Fatal("expected non-ADF ADZ payload to fail")
 	}
 }
 
@@ -113,4 +158,15 @@ func TestKnownCleanBootblockDoesNotMarkDiskClean(t *testing.T) {
 	if result.Verdict != "unknown" || result.Detection != "" || result.BootblockMatch == nil || result.BootblockMatch.Status != signatures.StatusKnownClean {
 		t.Fatalf("known-clean bootblock must not imply clean disk: %+v", result)
 	}
+}
+
+func testADFImage() []byte {
+	image := make([]byte, adf.DDSize)
+	copy(image[:3], []byte("DOS"))
+	image[3] = 1
+	binary.BigEndian.PutUint32(image[8:12], 880)
+	image[12] = 0x4e
+	image[13] = 0xf9
+	binary.BigEndian.PutUint32(image[4:8], adf.CalculateBootblockChecksum(image[:adf.BootBlockSize]))
+	return image
 }
