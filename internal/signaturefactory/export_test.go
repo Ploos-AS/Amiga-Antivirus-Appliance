@@ -207,6 +207,19 @@ func TestExportClamAVHashesPromotedClamAVOnly(t *testing.T) {
 	}
 }
 
+func TestValidateClamAVSignatureNameCharacterSet(t *testing.T) {
+	for _, name := range []string{"Win.Test-Clam_1", "A", "abc.DEF-123_test"} {
+		if err := validateClamAVSignatureName(name); err != nil {
+			t.Fatalf("safe name %q rejected: %v", name, err)
+		}
+	}
+	for _, name := range []string{"", "Unsafe Name", "Unsafe:Name", "Unsafe;Name", "Unsafe'Name", `Unsafe"Name`, "Amiga.Vírus"} {
+		if err := validateClamAVSignatureName(name); err == nil {
+			t.Fatalf("unsafe name %q accepted", name)
+		}
+	}
+}
+
 func TestExportClamAVHashesRejectsUnsafeName(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {
