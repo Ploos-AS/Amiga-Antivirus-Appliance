@@ -6,6 +6,12 @@ Build the local, provenance-first infrastructure that turns confirmed malware de
 
 The Signature Factory is mandatory infrastructure for later native signatures, ClamAV export, historical-engine correlation, corpus validation, and signature distribution.
 
+## Status
+
+**Code-qualified.** The schema, persistent store, automatic exact-candidate recording, and explicit lifecycle CLI are implemented and qualified in GitHub Actions for linux/amd64 and linux/arm64. See `docs/M7_0_QUALIFICATION.md`.
+
+Reference-appliance runtime qualification remains pending as part of the broader appliance qualification and is not required to proceed to M7.1.
+
 ## Safety and trust model
 
 - A detection may create a **candidate**; it does not automatically become a trusted/published signature.
@@ -35,7 +41,7 @@ Candidate, promoted and rejected records are immutable evidence records in norma
 
 ## Candidate schema
 
-M7.0 starts with schema version 1:
+M7.0 uses schema version 1:
 
 ```json
 {
@@ -68,22 +74,20 @@ The initial lifecycle is:
 
 `detection → candidate → validate → promote | reject → build/export`
 
-Promotion is explicit. M7.0 must not silently promote a candidate merely because a scanner reported malware.
+Promotion is explicit. M7.0 does not silently promote a candidate merely because a scanner reported malware.
 
 A later corpus-validation milestone may automate confidence changes when independent evidence meets documented policy, but publication still remains attributable and reproducible.
 
-## Planned CLI
+## CLI
 
 ```text
-aaa signatures candidates
+aaa signatures candidates [--json]
 aaa signatures validate
 aaa signatures promote <id>
 aaa signatures reject <id>
-aaa signatures build
-aaa signatures export clamav
 ```
 
-M7.0 begins with the storage model, schema validation and deterministic candidate creation primitives. CLI lifecycle operations can then be layered over those primitives without duplicating policy.
+`aaa signatures build` and `aaa signatures export clamav` are intentionally deferred to M7.2, where generated signature formats and export semantics are qualified explicitly.
 
 ## Candidate generation policy
 
@@ -91,23 +95,27 @@ M7.0 begins with the storage model, schema validation and deterministic candidat
 
 A confirmed infected file may produce an exact `file-sha256` candidate containing the original sample SHA-256, sample size, format and detection provenance. Exact hashes identify only that exact byte sequence and therefore do not imply family-wide coverage.
 
+For infected archive members, AAA records the exact member hash rather than treating only the outer ZIP/LHA/LZX container hash as the malware identity.
+
 ### Bootblock SHA-256
 
-A confirmed infected Amiga bootblock may produce an exact `bootblock-sha256` candidate. The bootblock hash must be the hash of the exact bootblock bytes used by AAA's bootblock analysis. The containing disk/sample hash remains provenance evidence and must not be confused with the bootblock hash.
+A confirmed infected Amiga bootblock may produce an exact `bootblock-sha256` candidate. The bootblock hash is the hash of the exact bootblock bytes used by AAA's bootblock analysis. The containing disk/sample hash remains provenance evidence and is not confused with the bootblock hash.
 
 ### Pattern
 
-Pattern candidates are intentionally stricter. A detection alone is insufficient to publish a pattern. Pattern derivation, clean-corpus checks, malware-corpus coverage and false-positive controls belong to M7.3 and later qualification.
+Pattern candidates are intentionally stricter and remain disabled in M7.0. A detection alone is insufficient to publish a pattern. Pattern derivation, clean-corpus checks, malware-corpus coverage and false-positive controls belong to M7.3 and later qualification.
 
 ## Engine provenance
 
-Every generated candidate must identify the source of the detection. Examples include `aaa-native`, `clamav`, `virusz`, `virusexecutor`, `viruschecker2`, `virusslayer2`, `mill`, and `vtschutz`.
+Every generated candidate identifies the source of the detection. Examples include `aaa-native`, `clamav`, `virusz`, `virusexecutor`, `viruschecker2`, `virusslayer2`, `mill`, and `vtschutz`.
 
 When version/database identity is available it must be recorded. Raw engine evidence may be referenced or summarized, but a generated signature must remain reproducible from structured provenance rather than an unexplained final verdict.
 
+M7.1 strengthens this model with normalized evidence records and explicit cross-engine correlation/independence rules.
+
 ## M7 sequence
 
-- **M7.0 Signature Factory** — schema, local store, candidate creation/validation/lifecycle primitives.
+- **M7.0 Signature Factory** — schema, local store, exact candidate creation/validation, automatic infected-result recording, and lifecycle primitives. **Code-qualified.**
 - **M7.1 Evidence/provenance** — normalized evidence records and stronger cross-engine attribution.
 - **M7.2 ClamAV export** — deterministic generation of supported ClamAV signature forms from promoted records.
 - **M7.3 Corpus validation** — clean/malware corpus gates, false-positive checks and pattern qualification.
@@ -115,7 +123,7 @@ When version/database identity is available it must be recorded. Raw engine evid
 
 ## M7.0 code qualification
 
-M7.0 is code-qualified when:
+M7.0 is code-qualified because:
 
 - schema-v1 candidate structs and strict validation exist;
 - the persistent directory model can be created safely;
@@ -123,9 +131,13 @@ M7.0 is code-qualified when:
 - exact file/bootblock SHA-256 candidates can be written deterministically and read back;
 - duplicate candidate creation is idempotent or fails safely without overwriting conflicting evidence;
 - malformed records and path traversal attempts fail closed;
+- infected scan results can record exact candidates without auto-promotion;
+- lifecycle listing, validation, promotion and rejection are explicit CLI operations;
 - no malware payload is required in repository tests;
 - tests use synthetic hashes/evidence only;
 - gofmt, vet, tests, linux/amd64 build and linux/arm64 build pass.
+
+Final qualification evidence is recorded in `docs/M7_0_QUALIFICATION.md`.
 
 ## Non-goals for M7.0
 
