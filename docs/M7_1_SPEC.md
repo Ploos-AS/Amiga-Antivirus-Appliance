@@ -69,11 +69,12 @@ Missing database identity fails closed instead of inventing provenance. Raw resu
 
 M7.1 includes a bounded `clamscan` execution adapter. `RunClamAV` scans one already-existing regular host file and uses `AAA_CLAMSCAN` when configured, otherwise `clamscan` from `PATH`.
 
-The adapter currently:
+The adapter:
 
 - validates that the target resolves to a regular file before execution;
 - executes `clamscan --version` first and fails closed unless engine and signature database identity can be parsed;
-- executes a single host-path scan with `--no-summary --stdout -- <path>` without invoking a shell;
+- executes a single host-path scan with `--no-summary --stdout --scan-archive=no -- <path>` without invoking a shell;
+- explicitly disables ClamAV archive recursion so AAA retains ownership of archive expansion and member provenance;
 - applies a 5-second version-query timeout and a 30-second scan timeout;
 - caps stdout and stderr independently at 64 KiB;
 - accepts ClamAV exit code 0 only for a parsed `OK` result;
@@ -82,8 +83,6 @@ The adapter currently:
 - converts successful `FOUND` results immediately into the same normalized M7.1 evidence model and correlation policy used by the parser-only helper.
 
 A clean ClamAV result is returned as clean engine evidence state but does not create malware evidence.
-
-Before this execution slice can be formally qualified, AAA must explicitly disable ClamAV archive recursion so the external engine cannot independently expand opaque archive members outside AAA's bounded archive/provenance model.
 
 ## CLI and Signature Factory integration
 
@@ -100,9 +99,9 @@ When `--clamav` is enabled:
 
 This integration deliberately does not redefine the native scanner's top-level verdict. Engine aggregation and cross-engine confidence policy remain later explicit work rather than being inferred from one external-engine result.
 
-Candidate persistence must preserve the M7.0 store conflict contract: an exact repeat is idempotent and reports that no new candidate was created, while a same-ID/different-content record must fail with `ErrCandidateConflict`. The ClamAV pipeline has dedicated synthetic qualification tests for these semantics.
+Candidate persistence preserves the M7.0 store conflict contract: an exact repeat is idempotent and reports that no new candidate was created, while a same-ID/different-content record fails with `ErrCandidateConflict`. Dedicated synthetic tests cover these semantics.
 
-Before CLI integration is formally closed, the host file must also be re-verified after ClamAV execution so a path replacement or content change between the native hash and the external scan cannot produce a candidate whose SHA-256 no longer identifies the bytes actually scanned by ClamAV.
+After ClamAV returns, AAA re-opens the submitted host path, requires it still to be a regular file, computes SHA-256 again and compares it with the SHA-256 produced by the native AAA scan. Any disappearance, type change, read failure or hash mismatch fails closed before an infected ClamAV result can be committed as a candidate. This prevents a path replacement or content change between the native hash and the external scan from binding malware evidence to the wrong bytes.
 
 ## Historical engines
 
@@ -119,13 +118,16 @@ Those adapters must record engine version, database/XVS/Brain identity where obs
 
 ## M7.1 qualification status
 
-The normalized evidence model, ClamAV provenance parser, bounded command execution wiring and opt-in CLI integration are implemented and have previously passed the normal Go CI gates. GitHub Actions CI #162 passed on commit `6e677dde3832bbb4709e505df8db3bc8a55bbd0a`, qualifying that wiring/build state only.
+**Code-qualified.**
 
-The earlier statement that the ClamAV CLI/candidate integration slice was fully closed was premature. Formal M7.1 ClamAV integration qualification remains blocked until all of the following are green:
+The previously open preservation blockers are resolved:
 
-- candidate persistence tests prove exact-repeat idempotence and same-ID/different-content conflict preservation;
-- ClamAV archive recursion is explicitly disabled and covered by synthetic execution-adapter tests;
-- the input is re-hashed or otherwise integrity-checked after ClamAV execution before an infected result can be committed as a candidate;
-- gofmt, vet, tests and amd64/arm64 builds pass on the final qualification commit.
+- candidate persistence exact-repeat idempotence and same-ID/different-content conflict behavior passed CI #175;
+- explicit ClamAV archive-recursion disablement and synthetic execution-adapter coverage passed CI #177;
+- post-ClamAV input SHA-256 integrity verification passed CI #180.
 
-M7.2 export code may exist in the tree, but M7.1 must not be represented as formally closed until these preservation blockers are resolved.
+GitHub Actions CI #180 completed successfully on commit `40f6d822445611d06c893eb28fc317f8ec18f237`. Its test job passed research-manifest validation, format check, module metadata check, `go vet`, tests, linux/amd64 build and linux/arm64 build.
+
+M7.1 is therefore closed as **code-qualified** for normalized evidence/provenance, correlation semantics, bounded ClamAV execution, candidate integration, archive-recursion control and post-engine input integrity. Reference Orange Pi runtime qualification and M8 historical-engine runtime work remain separate later qualification activities.
+
+M7.2 export work may proceed without reopening M7.1 unless a regression changes one of these qualified contracts.
