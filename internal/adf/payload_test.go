@@ -5,6 +5,8 @@ import (
 	"testing"
 )
 
+const secondaryFileWord = uint32(0xfffffffd)
+
 func TestAnalyzeFFSFilePayload(t *testing.T) {
 	image := make([]byte, DDSize)
 	header := image[100*blockSize : 101*blockSize]
@@ -12,7 +14,7 @@ func TestAnalyzeFFSFilePayload(t *testing.T) {
 	putWord(header, 2, 1)
 	putWord(header, fileByteSizeWord, 5)
 	putWord(header, fileDataBaseWord+fileDataSlots-1, 200)
-	putWord(header, secondaryTypeWord, uint32(int32(secondaryFile)))
+	putWord(header, secondaryTypeWord, secondaryFileWord)
 	copy(image[200*blockSize:], []byte("hello"))
 
 	got := analyzeFilePayload(image, 100, 1)
@@ -31,7 +33,7 @@ func TestAnalyzeOFSFilePayload(t *testing.T) {
 	putWord(header, 2, 1)
 	putWord(header, fileByteSizeWord, 5)
 	putWord(header, fileDataBaseWord+fileDataSlots-1, 200)
-	putWord(header, secondaryTypeWord, uint32(int32(secondaryFile)))
+	putWord(header, secondaryTypeWord, secondaryFileWord)
 
 	data := image[200*blockSize : 201*blockSize]
 	putWord(data, 0, primaryDataType)
@@ -57,7 +59,7 @@ func TestAnalyzeFFSPayloadUsesExtensionBlocks(t *testing.T) {
 	putWord(header, fileByteSizeWord, 517)
 	putWord(header, fileDataBaseWord+fileDataSlots-1, 200)
 	putWord(header, fileExtensionWord, 150)
-	putWord(header, secondaryTypeWord, uint32(int32(secondaryFile)))
+	putWord(header, secondaryTypeWord, secondaryFileWord)
 	for i := 0; i < blockSize; i++ {
 		image[200*blockSize+i] = 'A'
 	}
@@ -66,7 +68,7 @@ func TestAnalyzeFFSPayloadUsesExtensionBlocks(t *testing.T) {
 	putWord(ext, 0, primaryListType)
 	putWord(ext, 2, 1)
 	putWord(ext, fileDataBaseWord+fileDataSlots-1, 201)
-	putWord(ext, secondaryTypeWord, uint32(int32(secondaryFile)))
+	putWord(ext, secondaryTypeWord, secondaryFileWord)
 	copy(image[201*blockSize:], []byte("hello"))
 
 	got := analyzeFilePayload(image, 100, 1)
@@ -93,7 +95,7 @@ func TestFilesystemEntryIncludesPayloadHash(t *testing.T) {
 	putWord(file, fileByteSizeWord, 5)
 	putWord(file, fileDataBaseWord+fileDataSlots-1, 200)
 	putName(file, "sample")
-	putWord(file, secondaryTypeWord, uint32(int32(secondaryFile)))
+	putWord(file, secondaryTypeWord, secondaryFileWord)
 	copy(image[200*blockSize:], []byte("hello"))
 
 	got, err := AnalyzeFilesystemBytes(image)
