@@ -12,7 +12,8 @@ M6 is delivered incrementally:
 - M6.1a: ZIP member enumeration/extraction, hashing, and member format classification.
 - M6.1b: LHA/LZH member extraction plus full native per-member ADF/Hunk scanning for ZIP and LHA.
 - M6.2: DMS disk-image decoding through the reference xDMS decoder, with bounded stdin/stdout integration into the ADF scanner pipeline.
-- M6.3: Amiga LZX support plus bounded nested-container scanning.
+- M6.3: Amiga LZX support plus bounded nested-container scanning, including nested DMS under the shared per-job budget.
+- M6.4: preservation-oriented disk-image formats, beginning with IPF and FDI.
 
 A format is not claimed as supported merely because M1 can identify it.
 
@@ -20,19 +21,19 @@ A format is not claimed as supported merely because M1 can identify it.
 
 Archive processing is passive. Expanded bytes are not executed. Expansion is bounded. The current hard global expanded-data ceiling for a scan job is 32 MiB and the entry ceiling is 1024. Original submissions are never modified or deleted. Archive members are retained only in memory and member names are metadata, not host extraction paths. Invalid, truncated, encrypted, unsupported, malformed or over-limit containers fail closed with an attributable error/warning rather than being silently treated as clean.
 
-Nested ZIP, LHA/LZH and LZX scanning has an explicit maximum archive depth of 2. Nested layers share the same global expanded-byte budget instead of receiving a fresh 32 MiB budget per layer. A descendant `infected` verdict propagates through its ancestors to the outer result. Nested DMS remains disabled until the xDMS subprocess can participate in the same per-job accounting model.
+Nested ZIP, LHA/LZH and LZX scanning has an explicit maximum archive depth of 2. Nested layers share the same global expanded-byte budget instead of receiving a fresh 32 MiB budget per layer. Nested ADZ and DMS also consume that same remaining budget before expansion is accepted. A descendant `infected` verdict propagates through its ancestors to the outer result.
 
 ## M6.0 contract
 
 `internal/archive.DecodeADZ` accepts gzip bytes, expands them in memory, applies the hard expansion limit, and returns the expanded bytes plus SHA-256 metadata.
 
-The scanner then requires the expanded payload to satisfy a supported raw ADF geometry and AmigaDOS bootblock contract before applying the existing native scanner chain. A valid ADZ therefore flows through:
+The scanner then requires the expanded payload to satisfy a supported raw ADF geometry and applies the existing native scanner chain. A valid ADZ therefore flows through:
 
-`ADZ → expanded ADF → bootblock analysis/signatures → OFS/FFS traversal → reconstructed file SHA-256 → Hunk analysis`
+`ADZ → expanded ADF → bootblock analysis/signatures → OFS/FFS traversal when available → reconstructed file SHA-256 → Hunk analysis`
 
 No temporary extracted ADF is written to disk. The JSON result retains the outer submission hash and format, adds archive/member metadata, and attaches the normal ADF/filesystem analysis for the expanded image.
 
-Malformed gzip, expansion over the budget, unsupported ADF geometry, or a non-AmigaDOS expanded payload causes the scan to fail closed rather than being treated as an unknown clean container.
+Malformed gzip, expansion over the budget, unsupported ADF geometry, or an otherwise invalid expanded payload causes the scan to fail closed rather than being treated as an unknown clean container.
 
 ## M6.1a ZIP contract
 
@@ -54,11 +55,13 @@ DMS is decoded with the reference `xdms` utility. xDMS is public-domain software
 
 `xdms -q u stdin +stdout`
 
-The submitted DMS bytes are sent through stdin and the expanded disk image is read from stdout. AAA does not create a temporary submitted DMS file or extracted ADF path. Decoder stdout is capped at 32 MiB and execution is limited to 15 seconds. Missing xDMS, decoder failure, timeout, empty output, over-limit output, unsupported ADF geometry, or a non-AmigaDOS result fails closed.
+The submitted DMS bytes are sent through stdin and the expanded disk image is read from stdout. AAA does not create a temporary submitted DMS file or extracted ADF path. Decoder stdout is capped at 32 MiB and execution is limited to 15 seconds. Missing xDMS, decoder failure, timeout, empty output, over-limit output, or unsupported ADF geometry fails closed.
+
+`DecodeDMSLimited` allows the nested scanner to pass the remaining global expansion budget directly into the xDMS wrapper before output is accepted into memory.
 
 The resulting bytes are hashed and then passed through the same ADF chain used by ADZ:
 
-`DMS → xDMS → expanded ADF → bootblock analysis/signatures → OFS/FFS traversal → reconstructed file SHA-256 → Hunk analysis`
+`DMS → xDMS → expanded ADF → bootblock analysis/signatures → OFS/FFS traversal when available → reconstructed file SHA-256 → Hunk analysis`
 
 `AAA_XDMS` may override the xDMS executable path for controlled testing or deployment. It is an executable path only; arguments are not interpreted through a shell.
 
@@ -80,19 +83,31 @@ The current nested-container contract is intentionally conservative:
 
 - maximum archive depth: 2;
 - global expanded-data budget: 32 MiB across the archive tree;
-- archive entry ceiling: 1024 per decoder call, with nested decoders receiving bounded remaining resources;
+- archive entry ceiling: 1024, with nested decoders receiving only remaining resources;
 - ZIP, LHA/LZH and LZX may recurse;
 - ADZ may appear as a member and must expand to a valid ADF;
-- DMS is reported but not recursively decoded yet because xDMS is not integrated with the shared per-job budget;
+- DMS may appear as a member and is decoded through `DecodeDMSLimited` using the same remaining expansion/member budget;
 - member bytes remain in memory and archive member names never become host extraction paths;
 - an infected descendant propagates `infected` to each ancestor and the top-level result;
 - malformed or over-limit descendants retain an attributable error and are never promoted to clean.
+
+## M6.4 preservation disk-image formats
+
+M6.4 adds formats whose low-level track representation may contain information that cannot be represented faithfully by a normal sector-only ADF.
+
+The first targets are IPF and FDI. The original image remains the primary evidence object and retains its own SHA-256. If a decoder can expose a normal AmigaDOS sector view, AAA may create a transient derived sector image for the existing native ADF/filesystem scanner, but the report must retain provenance between the original preservation image and the derived view.
+
+IPF support uses an optional external CAPSImage-compatible decoder boundary rather than linking separately licensed CAPS/SPS code into the MIT AAA core. FDI will use an auditable parser or the same bounded helper model depending on the selected implementation and license.
+
+See `docs/M6_4_SPEC.md` for the exact contract and qualification gates.
 
 ## Dependency policy
 
 AAA itself is MIT licensed. The LHA reader is also MIT licensed and remains a separately attributed third-party dependency. M6.1b raises the build baseline to Go 1.24 because the selected current LHA module requires Go 1.24 or later. Dependency checksums are committed in `go.sum`.
 
 xDMS is a separate runtime utility rather than linked project code. Its upstream distribution states that xDMS is public-domain software. `unar`/`lsar` are provided by Debian as a separate runtime package. AAA does not relicense external components.
+
+CAPS/SPS decoder code used for IPF remains a separately licensed optional runtime component and is not bundled as MIT project code.
 
 ## Qualification
 
@@ -104,8 +119,10 @@ M6.1b is code-qualified when CI additionally passes LHA decode/error tests, full
 
 M6.2 is code-qualified when CI passes DMS magic/error tests, bounded xDMS wrapper tests, a scanner integration test proving decoded bytes reach ADF analysis, module metadata checks, vet, all tests, and both architecture builds. Final runtime qualification additionally requires the real Debian xDMS package on the Orange Pi/DietPi reference appliance and a provenance-safe DMS fixture.
 
-M6.3 is code-qualified when CI passes nested-depth/global-budget tests, bounded LZX wrapper tests, an LZX scanner integration test proving an extracted Hunk member reaches Hunk analysis, module metadata checks, vet, all tests, and both architecture builds. Final runtime qualification additionally requires Debian `unar`/`lsar` on the Orange Pi/DietPi reference appliance and a provenance-safe real Amiga LZX fixture.
+M6.3 is code-qualified when CI passes nested-depth/global-budget tests, bounded nested DMS tests, bounded LZX wrapper tests, an LZX scanner integration test proving an extracted Hunk member reaches Hunk analysis, module metadata checks, vet, all tests, and both architecture builds. Final runtime qualification additionally requires Debian `unar`/`lsar` and xDMS on the Orange Pi/DietPi reference appliance plus provenance-safe real DMS/LZX fixtures.
+
+M6.4 has separate IPF and FDI qualification gates defined in `docs/M6_4_SPEC.md`.
 
 ## Exit criteria for full M6
 
-M6 is complete when ADZ, DMS, LHA/LZH, LZX and the supported ZIP subset have bounded extraction/decoding, tests, scanner integration, and explicit behavior for malformed and unsupported inputs, with the remaining real-fixture/reference-appliance checks tracked separately from code qualification.
+M6 archive/compressed-image support is complete for ADZ, DMS, ZIP, LHA/LZH and LZX when all have bounded extraction/decoding, tests, scanner integration, and explicit malformed-input behavior. Preservation-image support then extends M6 with IPF and FDI under the separate M6.4 evidence/provenance contract.
