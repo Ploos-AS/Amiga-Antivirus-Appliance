@@ -10,7 +10,7 @@ M6 is delivered incrementally:
 
 - M6.0: ADZ (gzip-wrapped ADF), bounded in-memory expansion, member hashing, and full scanner integration.
 - M6.1a: ZIP member enumeration/extraction, hashing, and member format classification.
-- M6.1b: LHA/LZH member enumeration/extraction and ZIP/LHA member scan-result integration.
+- M6.1b: LHA/LZH member extraction plus full native per-member ADF/Hunk scanning for ZIP and LHA.
 - M6.2: DMS disk-image decoding.
 - M6.3: LZX support and nested-container policy.
 
@@ -18,7 +18,7 @@ A format is not claimed as supported merely because M1 can identify it.
 
 ## Safety contract
 
-Archive processing is passive. Expanded bytes are not executed. Expansion is bounded. M6.0 and M6.1a use a 32 MiB hard aggregate expansion limit, and ZIP additionally permits at most 1024 entries. Original submissions are never modified or deleted. ZIP members are retained only in memory; member names are never used as host extraction paths. Invalid, truncated, encrypted, unsupported, or over-limit containers fail closed with an attributable error/warning rather than being silently treated as clean.
+Archive processing is passive. Expanded bytes are not executed. Expansion is bounded. M6.0 and M6.1 use a 32 MiB hard aggregate expansion limit, and ZIP/LHA additionally permit at most 1024 members. Original submissions are never modified or deleted. Archive members are retained only in memory; member names are metadata and are never used as host extraction paths. Invalid, truncated, encrypted, unsupported, or over-limit containers fail closed with an attributable error/warning rather than being silently treated as clean.
 
 ## M6.0 contract
 
@@ -36,13 +36,32 @@ Malformed gzip, expansion over 32 MiB, unsupported ADF geometry, or a non-AmigaD
 
 `internal/archive.DecodeZIP` uses Go's standard-library ZIP reader. It expands regular members into memory, ignores directory entries, rejects encrypted members, caps the archive at 1024 entries, and applies a 32 MiB aggregate expanded-size limit. Each regular member receives an exact SHA-256.
 
-The scanner classifies each expanded member using AAA's existing content-aware format detector and records the member name, expanded size, SHA-256, and detected format in the archive result. M6.1a deliberately does not write members to host paths and does not yet recursively attach full per-member ADF/Hunk scan results; that is part of M6.1b/M6.3.
+The scanner classifies each expanded member using AAA's existing content-aware format detector and records the member name, expanded size, SHA-256, and detected format in the archive result.
+
+## M6.1b LHA/LZH and member scanning contract
+
+`internal/archive.DecodeLHA` uses the MIT-licensed `github.com/koron-go/lha` reader. AAA accepts the supported `-lh0-`, `-lh4-`, `-lh5-`, `-lh6-`, and `-lh7-` methods, validates that the input starts with a recognized LHA header, rejects unsupported or malformed streams, caps expansion at 32 MiB aggregate data, and caps extracted members at 1024. LHA member names remain metadata only.
+
+ZIP and LHA members are then passed through the native scanner without writing extracted content to disk. Supported member payloads currently receive:
+
+- raw ADF bootblock analysis and bootblock database matching;
+- OFS/FFS filesystem traversal and reconstructed file hashing;
+- Hunk analysis for standalone Hunk executables;
+- per-member verdict, detection, error, and structural metadata.
+
+An infected member propagates `infected` to the outer archive result with the member name retained in the detection string. Unknown or unsupported members remain `unknown`. Nested archive expansion is intentionally deferred to M6.3 so archive recursion limits can be specified explicitly before enabling it.
+
+## Dependency policy
+
+AAA itself is MIT licensed. The LHA reader is also MIT licensed and remains a separately attributed third-party dependency. M6.1b raises the build baseline to Go 1.24 because the selected current LHA module requires Go 1.24 or later. Dependency checksums are committed in `go.sum`.
 
 ## Qualification
 
 M6.0 is code-qualified when CI passes archive and scanner ADZ tests, gofmt, `go vet ./...`, all Go tests, and linux/amd64 plus linux/arm64 builds.
 
 M6.1a is code-qualified when the same CI additionally passes ZIP unit tests and a scanner integration test proving member enumeration, SHA-256, and format classification.
+
+M6.1b is code-qualified when CI additionally passes LHA decode/error tests, full ZIP ADF/Hunk member scan tests, an LHA Hunk member scan test, module metadata checks, vet, all tests, and both architecture builds.
 
 ## Exit criteria for full M6
 
