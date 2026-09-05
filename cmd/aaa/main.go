@@ -17,6 +17,10 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "AAA — Amiga AntiVirus Appliance\n\n")
 	fmt.Fprintf(os.Stderr, "Usage:\n")
 	fmt.Fprintf(os.Stderr, "  aaa scan [--json] <file>\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures candidates [--json]\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures validate\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures promote <id>\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures reject <id>\n")
 	fmt.Fprintf(os.Stderr, "  aaa version\n")
 }
 
@@ -29,6 +33,8 @@ func main() {
 	switch os.Args[1] {
 	case "scan":
 		scanCommand(os.Args[2:])
+	case "signatures":
+		signaturesCommand(os.Args[2:])
 	case "version", "--version", "-version":
 		fmt.Printf("aaa %s\n", version)
 	case "help", "--help", "-h":
@@ -150,6 +156,83 @@ func scanCommand(args []string) {
 		fmt.Printf("Detect:   %s\n", result.Detection)
 	}
 	fmt.Printf("Verdict:  %s\n", result.Verdict)
+}
+
+func signaturesCommand(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "signatures requires a subcommand")
+		usage()
+		os.Exit(2)
+	}
+	store, err := signaturefactory.NewStore(signaturefactory.StoreRootFromEnv())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "signature store failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	switch args[0] {
+	case "candidates":
+		signatureCandidatesCommand(store, args[1:])
+	case "validate":
+		if len(args) != 1 {
+			fmt.Fprintln(os.Stderr, "signatures validate takes no arguments")
+			os.Exit(2)
+		}
+		if err := store.ValidateCandidates(); err != nil {
+			fmt.Fprintf(os.Stderr, "signature validation failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("signature candidates valid")
+	case "promote", "reject":
+		if len(args) != 2 {
+			fmt.Fprintf(os.Stderr, "signatures %s requires exactly one candidate id\n", args[0])
+			os.Exit(2)
+		}
+		var candidate signaturefactory.Candidate
+		if args[0] == "promote" {
+			candidate, err = store.Promote(args[1])
+		} else {
+			candidate, err = store.Reject(args[1])
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "signature %s failed: %v\n", args[0], err)
+			os.Exit(1)
+		}
+		fmt.Printf("%s %s\n", candidate.Status, candidate.ID)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown signatures subcommand: %s\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func signatureCandidatesCommand(store *signaturefactory.Store, args []string) {
+	fs := flag.NewFlagSet("signatures candidates", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
+	if err := fs.Parse(args); err != nil {
+		os.Exit(2)
+	}
+	if fs.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "signatures candidates takes no positional arguments")
+		os.Exit(2)
+	}
+	candidates, err := store.ListCandidates()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "list signature candidates failed: %v\n", err)
+		os.Exit(1)
+	}
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(candidates); err != nil {
+			fmt.Fprintf(os.Stderr, "output failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	for _, candidate := range candidates {
+		fmt.Printf("%s\t%s\t%s\t%s\n", candidate.ID, candidate.Kind, candidate.Confidence, candidate.DetectionName)
+	}
 }
 
 func recordSignatureCandidates(result scanner.Result) error {
