@@ -296,13 +296,19 @@ func analyzeADFPath(result *Result, path string) error {
 		return fmt.Errorf("analyze ADF: %w", err)
 	}
 	result.ADF = analysis
+	if err := applyBundledBootblockDatabase(result); err != nil {
+		return err
+	}
+	if !analysis.DOSHeaderRecognized {
+		return nil
+	}
 
 	filesystem, err := adf.AnalyzeFilesystem(path)
 	if err != nil {
 		return fmt.Errorf("analyze ADF filesystem: %w", err)
 	}
 	result.Filesystem = filesystem
-	return applyBundledBootblockDatabase(result)
+	return nil
 }
 
 func analyzeADFBytes(result *Result, image []byte) error {
@@ -311,13 +317,19 @@ func analyzeADFBytes(result *Result, image []byte) error {
 		return err
 	}
 	result.ADF = analysis
+	if err := applyBundledBootblockDatabase(result); err != nil {
+		return err
+	}
+	if !analysis.DOSHeaderRecognized {
+		return nil
+	}
 
 	filesystem, err := adf.AnalyzeFilesystemBytes(image)
 	if err != nil {
 		return fmt.Errorf("analyze ADF filesystem: %w", err)
 	}
 	result.Filesystem = filesystem
-	return applyBundledBootblockDatabase(result)
+	return nil
 }
 
 func applyBundledBootblockDatabase(result *Result) error {
@@ -342,10 +354,13 @@ func applyBootblockDatabase(result *Result, db *signatures.Database) {
 }
 
 func DetectFormat(path string, head []byte, size int64) string {
+	// Raw classic ADF geometry is itself enough to make the file an ADF
+	// candidate. Antivirus scanning must not depend on a DOS header because a
+	// boot virus or custom bootblock may overwrite those bytes.
+	if size == adf.DDSize || size == adf.HDSize {
+		return "adf"
+	}
 	if len(head) >= 4 && string(head[:3]) == "DOS" && head[3] <= 7 {
-		if size == adf.DDSize || size == adf.HDSize {
-			return "adf"
-		}
 		return "amiga-filesystem-image"
 	}
 	if len(head) >= 4 && string(head[:4]) == "DMS!" {
