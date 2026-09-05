@@ -11,6 +11,10 @@ The project, product, and public CLI are all named **AAA**:
 ```sh
 aaa scan <file>
 aaa scan --json <file>
+aaa signatures candidates
+aaa signatures validate
+aaa signatures promote <id>
+aaa signatures reject <id>
 aaa version
 ```
 
@@ -33,6 +37,7 @@ aaa version
 - **M6.3** — Amiga LZX plus bounded nested ZIP/LHA/LZX/ADZ/DMS scanning under shared per-job budgets: implemented and CI-qualified; real-fixture/reference-appliance qualification pending.
 - **M6.4a** — IPF preservation-image helper boundary plus scanner integration: implemented and CI-qualified with deterministic fake-helper coverage; real CAPS-compatible decoder/fixture and Orange Pi runtime qualification pending.
 - **M6.4b** — FDI preservation-image helper boundary plus scanner integration: implemented and CI-qualified with deterministic fake-helper coverage; real FDI parser/helper/fixture and Orange Pi runtime qualification pending.
+- **M7.0** — Signature Factory foundation: candidate schema, persistent store, automatic exact-candidate recording, and explicit lifecycle CLI implemented and code-qualified; reference-appliance runtime qualification pending.
 
 M3 can declare an ADF `infected` when its bootblock exactly matches a known-malicious entry. A known-clean bootblock does not make the whole disk clean, because complete malware inspection of reconstructed files is not implemented yet.
 
@@ -75,6 +80,8 @@ M6.3 adds Amiga LZX through Debian `unar`/`lsar` and enables bounded nested-cont
 
 M6.4 extends scanning to preservation formats IPF and FDI through bounded optional helper boundaries. The original preservation image remains the primary evidence object and retains its own SHA-256; any lossless ADF-compatible sector view is explicitly recorded as derived evidence with a separate SHA-256 before entering the native ADF scanner pipeline. Both helper boundaries and scanner integrations are code-qualified in CI. Real decoder/parser fixtures and reference-appliance runtime qualification remain pending. IPF uses an optional separately licensed CAPSImage-compatible decoder boundary rather than bundling CAPS/SPS code into AAA's MIT core. See `docs/M6_4_SPEC.md`.
 
+M7.0 adds the local Signature Factory. Confirmed `infected` results can produce reviewable exact SHA-256 candidates under `/data/aaa/signatures` without automatic promotion or publication. Candidate writes are deterministic and conflict-safe, archive-member infections are attributed to the member rather than only the outer container, and malicious bootblock candidates retain both the containing sample hash and exact bootblock hash. Operators can list, validate, promote, or reject candidates explicitly. See `docs/M7_0_SPEC.md` and `docs/M7_0_QUALIFICATION.md`.
+
 Example fields:
 
 ```text
@@ -90,7 +97,7 @@ Verdict:  unknown
 
 M4 enumerates file and directory names, paths, and header-block numbers. M4.1 reconstructs OFS/FFS file byte streams transiently and records exact SHA-256 without writing extracted files to the host filesystem. M5 recognizes `HUNK_HEADER` load files and summarizes CODE, DATA, BSS, relocation and structural records without loading or executing them.
 
-See `docs/M1_SPEC.md`, `docs/M2_SPEC.md`, `docs/M3_SPEC.md`, `docs/M3_1_SPEC.md`, `docs/M4_SPEC.md`, `docs/M4_1_SPEC.md`, `docs/M5_SPEC.md`, `docs/M6_SPEC.md`, and `docs/M6_4_SPEC.md` for the exact contracts.
+See `docs/M1_SPEC.md`, `docs/M2_SPEC.md`, `docs/M3_SPEC.md`, `docs/M3_1_SPEC.md`, `docs/M4_SPEC.md`, `docs/M4_1_SPEC.md`, `docs/M5_SPEC.md`, `docs/M6_SPEC.md`, `docs/M6_4_SPEC.md`, and `docs/M7_0_SPEC.md` for the exact contracts.
 
 ## Persistent appliance layout
 
@@ -142,7 +149,11 @@ The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/
 - M5 Amiga Hunk analysis
 - M6 ADZ/DMS/LHA/LZX/archive pipeline
 - M6.4 IPF/FDI preservation-image support (code-qualified; real-fixture/appliance qualification pending)
-- M7 Signature Factory and Amiga malware signatures / historical scanner knowledge
+- M7.0 Signature Factory foundation (code-qualified)
+- M7.1 normalized evidence/provenance and cross-engine attribution
+- M7.2 deterministic ClamAV export
+- M7.3 clean/malware corpus validation and pattern qualification
+- M7.4 signed/versioned signature distribution
 - M8 isolated emulated Amiga scanner engines and consensus
 - M9 daemon, REST API, scan history
 - M10 Web UI
