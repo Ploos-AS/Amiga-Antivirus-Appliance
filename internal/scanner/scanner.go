@@ -17,6 +17,20 @@ import (
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/signatures"
 )
 
+type MemberResult struct {
+	Name           string                  `json:"name"`
+	Size           int64                   `json:"size"`
+	SHA256         string                  `json:"sha256"`
+	Format         string                  `json:"format"`
+	Verdict        string                  `json:"verdict"`
+	Detection      string                  `json:"detection,omitempty"`
+	Error          string                  `json:"error,omitempty"`
+	ADF            *adf.Analysis           `json:"adf,omitempty"`
+	Filesystem     *adf.FilesystemAnalysis `json:"filesystem,omitempty"`
+	Hunk           *hunk.Analysis          `json:"hunk,omitempty"`
+	BootblockMatch *signatures.Match       `json:"bootblock_match,omitempty"`
+}
+
 type Result struct {
 	Path           string                  `json:"path"`
 	Name           string                  `json:"name"`
@@ -26,6 +40,7 @@ type Result struct {
 	Verdict        string                  `json:"verdict"`
 	Detection      string                  `json:"detection,omitempty"`
 	Archive        *archivepkg.Analysis    `json:"archive,omitempty"`
+	MemberResults  []MemberResult          `json:"member_results,omitempty"`
 	ADF            *adf.Analysis           `json:"adf,omitempty"`
 	Filesystem     *adf.FilesystemAnalysis `json:"filesystem,omitempty"`
 	Hunk           *hunk.Analysis          `json:"hunk,omitempty"`
@@ -105,8 +120,9 @@ func ScanFile(path string) (Result, error) {
 		if err != nil {
 			return Result{}, fmt.Errorf("decode %s: %w", format, err)
 		}
-		classifyArchiveMembers(archiveAnalysis, members)
 		result.Archive = archiveAnalysis
+		result.MemberResults = scanArchiveMembers(archiveAnalysis, members)
+		propagateMemberVerdict(&result)
 	case "amiga-hunk-executable":
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -118,19 +134,59 @@ func ScanFile(path string) (Result, error) {
 	return result, nil
 }
 
-func classifyArchiveMembers(analysis *archivepkg.Analysis, members []archivepkg.ExpandedMember) {
+func scanArchiveMembers(analysis *archivepkg.Analysis, members []archivepkg.ExpandedMember) []MemberResult {
 	if analysis == nil {
-		return
+		return nil
 	}
+	results := make([]MemberResult, 0, len(members))
 	for i, member := range members {
-		if i >= len(analysis.Members) {
-			break
-		}
 		memberHead := member.Data
 		if len(memberHead) > 4096 {
 			memberHead = memberHead[:4096]
 		}
-		analysis.Members[i].Format = DetectFormat(member.Name, memberHead, int64(len(member.Data)))
+		format := DetectFormat(member.Name, memberHead, int64(len(member.Data)))
+		if i < len(analysis.Members) {
+			analysis.Members[i].Format = format
+		}
+
+		sum := sha256.Sum256(member.Data)
+		memberResult := MemberResult{
+			Name:    member.Name,
+			Size:    int64(len(member.Data)),
+			SHA256:  hex.EncodeToString(sum[:]),
+			Format:  format,
+			Verdict: "unknown",
+		}
+		switch format {
+		case "adf":
+			tmp := Result{Verdict: "unknown"}
+			if err := analyzeADFBytes(&tmp, member.Data); err != nil {
+				memberResult.Error = err.Error()
+				break
+			}
+			memberResult.ADF = tmp.ADF
+			memberResult.Filesystem = tmp.Filesystem
+			memberResult.BootblockMatch = tmp.BootblockMatch
+			memberResult.Verdict = tmp.Verdict
+			memberResult.Detection = tmp.Detection
+		case "amiga-hunk-executable":
+			memberResult.Hunk = hunk.Analyze(member.Data)
+		}
+		results = append(results, memberResult)
+	}
+	return results
+}
+
+func propagateMemberVerdict(result *Result) {
+	if result == nil {
+		return
+	}
+	for _, member := range result.MemberResults {
+		if member.Verdict == "infected" {
+			result.Verdict = "infected"
+			result.Detection = "archive-member:" + member.Name + ":" + member.Detection
+			return
+		}
 	}
 }
 
