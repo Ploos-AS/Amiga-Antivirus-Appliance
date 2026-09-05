@@ -15,9 +15,9 @@ if [ "${AAA_SKIP_PACKAGES:-0}" != "1" ]; then
     if command -v apt-get >/dev/null 2>&1; then
         export DEBIAN_FRONTEND=noninteractive
         apt-get update
-        apt-get install -y clamav clamav-daemon ca-certificates
+        apt-get install -y clamav clamav-daemon ca-certificates xdms
     else
-        echo "WARNING: apt-get not found; skipping ClamAV package installation" >&2
+        echo "WARNING: apt-get not found; skipping ClamAV/xDMS package installation" >&2
     fi
 fi
 
