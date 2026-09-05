@@ -2,7 +2,7 @@
 
 AAA is a preservation-oriented malware scanning appliance for Commodore Amiga software and disk images.
 
-Reference target: Orange Pi Zero 3 running DietPi (ARM64). The core scanner is portable and is developed/tested independently of the appliance hardware.
+Reference target: Orange Pi Zero 3 running DietPi (ARM64). The core scanner is portable and is developed/tested independently of the appliance hardware. Raspberry Pi and other ARM64 Debian-family systems are portability targets; Orange Pi Zero 3 remains the reference appliance.
 
 ## Command name
 
@@ -21,11 +21,24 @@ aaa version
 - **M0** — appliance foundation: code complete; Orange Pi/DietPi runtime qualification pending hardware arrival.
 - **M1** — `aaa` CLI, SHA-256 and format identification: code-qualified in CI for amd64 and arm64.
 - **M2** — classic ADF geometry and bootblock analysis: code complete.
-- **M3** — exact bootblock SHA-256 matching and provenance-validated known-clean / known-malicious database: implemented.
+- **M3** — exact bootblock SHA-256 matching and provenance-validated known-clean / known-malicious database: implemented and CI-qualified.
+- **M3.1** — historical bootblock source qualification: source manifest and admission rules established; first VirusExecutor preservation source qualified for corroboration, not yet for direct fingerprint admission.
 
 M3 can declare an ADF `infected` when its bootblock exactly matches a known-malicious entry. A known-clean bootblock does not make the whole disk clean, because file-level scanning is not implemented yet.
 
 The production bootblock corpus starts empty intentionally. Real historical fingerprints are added only after provenance and classification have been verified; AAA does not invent signatures.
+
+## Hybrid scanner architecture
+
+AAA is intended to combine three independent layers:
+
+- the native Go AAA engine for deterministic Amiga-aware parsing and signatures;
+- ClamAV for generic host-side malware coverage;
+- an isolated 68k Amiga emulator running genuine native Amiga antivirus engines such as VirusZ and VirusExecutor, subject to licensing and automation qualification.
+
+The emulated scanner environment will be disposable/resettable, network-disabled by default, and unable to modify submitted originals. Scanner results remain attributable to engine/version/database identity instead of being collapsed into an unexplained verdict.
+
+See `docs/EMULATED_SCANNERS.md` for the architecture contract.
 
 ## Build and scan
 
@@ -53,7 +66,7 @@ Verdict:  unknown
 
 M1 format identification also recognizes DMS, ADZ/gzip, LHA/LZH, ZIP and Amiga Hunk executables where content signatures are available. Extension-only hints are reported as unrecognized rather than validated.
 
-See `docs/M1_SPEC.md`, `docs/M2_SPEC.md`, and `docs/M3_SPEC.md` for the exact contracts.
+See `docs/M1_SPEC.md`, `docs/M2_SPEC.md`, `docs/M3_SPEC.md`, and `docs/M3_1_SPEC.md` for the exact contracts.
 
 ## Persistent appliance layout
 
@@ -97,14 +110,16 @@ The current implementation uses only the Go standard library.
 - M1 `aaa` CLI, hashing, format identification
 - M2 ADF and boot-block analysis
 - M3 known-clean / known-malicious boot-block database
+- M3.1 historical bootblock source qualification
 - M4 OFS/FFS traversal
 - M5 Amiga Hunk analysis
 - M6 ADZ/DMS/LHA/LZX/archive pipeline
 - M7 Amiga malware signatures / historical scanner knowledge
-- M8 daemon, REST API, scan history
-- M9 Web UI
-- M10 SMB drop-folder workflow
-- M11 Greaseweazle integration
+- M8 isolated emulated Amiga scanner engines and consensus
+- M9 daemon, REST API, scan history
+- M10 Web UI
+- M11 SMB drop-folder workflow
+- M12 Greaseweazle integration
 
 ## License
 
