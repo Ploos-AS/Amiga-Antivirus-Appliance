@@ -28,7 +28,7 @@ func TestAnalyzeDDFFSBootable(t *testing.T) {
 	if got.DiskType != "dd" || got.Blocks != 1760 {
 		t.Fatalf("unexpected geometry: %+v", got)
 	}
-	if got.Filesystem != "FFS" || got.DOSVersion != 1 {
+	if !got.DOSHeaderRecognized || got.Filesystem != "FFS" || got.DOSVersion != 1 {
 		t.Fatalf("unexpected filesystem: %+v", got)
 	}
 	if !got.Bootable || !got.ChecksumValid || !got.RootBlockPlausible {
@@ -73,10 +73,25 @@ func TestAnalyzeRejectsUnsupportedGeometry(t *testing.T) {
 	}
 }
 
-func TestAnalyzeRejectsInvalidDOSHeader(t *testing.T) {
+func TestAnalyzePreservesCustomBootblockWithoutDOSHeader(t *testing.T) {
 	image := make([]byte, DDSize)
-	copy(image, []byte("NOPE"))
-	if _, err := Analyze(bytes.NewReader(image), int64(len(image))); err == nil {
-		t.Fatal("expected invalid bootblock error")
+	copy(image[:4], []byte("NOPE"))
+	binary.BigEndian.PutUint32(image[8:12], 880)
+	image[12] = 0x4e
+	image[13] = 0xf9
+	binary.BigEndian.PutUint32(image[4:8], CalculateBootblockChecksum(image[:BootBlockSize]))
+
+	got, err := Analyze(bytes.NewReader(image), int64(len(image)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DOSHeaderRecognized {
+		t.Fatalf("custom bootblock incorrectly recognized as DOS: %+v", got)
+	}
+	if got.Filesystem != "" || got.DOSVersion != 0 {
+		t.Fatalf("custom bootblock must not invent filesystem metadata: %+v", got)
+	}
+	if len(got.BootblockSHA256) != 64 || !got.Bootable || !got.ChecksumValid {
+		t.Fatalf("custom bootblock analysis incomplete: %+v", got)
 	}
 }
