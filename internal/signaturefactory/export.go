@@ -186,13 +186,11 @@ func validateClamAVSignatureName(name string) error {
 	if name == "" {
 		return errors.New("ClamAV signature name is required")
 	}
-	if strings.ContainsRune(name, ':') {
-		return errors.New("ClamAV signature name contains ':'")
-	}
 	for _, r := range name {
-		if r < 0x20 || r == 0x7f {
-			return errors.New("ClamAV signature name contains control characters")
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '.' || r == '_' {
+			continue
 		}
+		return fmt.Errorf("ClamAV signature name contains unsupported character %q", r)
 	}
 	return nil
 }
