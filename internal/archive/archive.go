@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+
+	"github.com/koron-go/lha"
 )
 
 const (
@@ -112,14 +114,74 @@ func DecodeZIP(data []byte) ([]ExpandedMember, *Analysis, error) {
 		}
 
 		total += int64(len(memberData))
-		sum := sha256.Sum256(memberData)
-		analysis.Members = append(analysis.Members, Member{
-			Name:   file.Name,
-			Size:   int64(len(memberData)),
-			SHA256: hex.EncodeToString(sum[:]),
-		})
-		expanded = append(expanded, ExpandedMember{Name: file.Name, Data: memberData})
+		appendMember(analysis, &expanded, file.Name, memberData)
 	}
 	analysis.ExpandedSize = total
 	return expanded, analysis, nil
+}
+
+// DecodeLHA expands supported LHA/LZH members entirely in memory. The selected
+// reader supports the common -lh0-, -lh4-, -lh5-, -lh6- and -lh7- methods.
+// Unsupported methods fail closed. Member names are metadata only and are never
+// interpreted as host filesystem paths.
+func DecodeLHA(data []byte) ([]ExpandedMember, *Analysis, error) {
+	r := lha.NewReader(bytes.NewReader(data))
+	analysis := &Analysis{Format: "lha"}
+	expanded := make([]ExpandedMember, 0)
+	var total int64
+
+	for {
+		if len(expanded) >= MaxMembers {
+			return nil, nil, fmt.Errorf("LHA exceeds %d-member safety limit", MaxMembers)
+		}
+		h, err := r.NextHeader()
+		if err != nil {
+			return nil, nil, fmt.Errorf("read LHA header: %w", err)
+		}
+		if h == nil {
+			break
+		}
+		if h.Method == "-lhd-" {
+			continue
+		}
+		if h.OriginalSize > uint64(MaxExpandedSize) || int64(h.OriginalSize) > MaxExpandedSize-total {
+			return nil, nil, fmt.Errorf("expanded LHA exceeds %d-byte safety limit", MaxExpandedSize)
+		}
+
+		var buf bytes.Buffer
+		buf.Grow(int(h.OriginalSize))
+		n, err := r.Decode(&buf)
+		if err != nil {
+			return nil, nil, fmt.Errorf("decode LHA member %q (%s): %w", lhaMemberName(h), h.Method, err)
+		}
+		if n < 0 || int64(n) != int64(buf.Len()) || int64(buf.Len()) != int64(h.OriginalSize) {
+			return nil, nil, fmt.Errorf("LHA member %q decoded size mismatch", lhaMemberName(h))
+		}
+		memberData := append([]byte(nil), buf.Bytes()...)
+		total += int64(len(memberData))
+		appendMember(analysis, &expanded, lhaMemberName(h), memberData)
+	}
+
+	analysis.ExpandedSize = total
+	return expanded, analysis, nil
+}
+
+func lhaMemberName(h *lha.Header) string {
+	if h == nil {
+		return ""
+	}
+	if h.Dir == "" {
+		return h.Name
+	}
+	return h.Dir + h.Name
+}
+
+func appendMember(analysis *Analysis, expanded *[]ExpandedMember, name string, data []byte) {
+	sum := sha256.Sum256(data)
+	analysis.Members = append(analysis.Members, Member{
+		Name:   name,
+		Size:   int64(len(data)),
+		SHA256: hex.EncodeToString(sum[:]),
+	})
+	*expanded = append(*expanded, ExpandedMember{Name: name, Data: data})
 }
