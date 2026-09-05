@@ -81,6 +81,24 @@ func scanCommand(args []string) {
 			fmt.Printf("Archive warn: %s\n", warning)
 		}
 	}
+	for _, member := range result.MemberResults {
+		fmt.Printf("Member scan: %s [%s] verdict=%s\n", member.Name, member.Format, member.Verdict)
+		if member.ADF != nil {
+			fmt.Printf("             ADF %s DOS\\%d (%s) boot-sha=%s\n", member.ADF.DiskType, member.ADF.DOSVersion, member.ADF.Filesystem, member.ADF.BootblockSHA256)
+		}
+		if member.Filesystem != nil {
+			fmt.Printf("             FS %d files, %d directories, %d Hunk files\n", member.Filesystem.FileCount, member.Filesystem.DirectoryCount, member.Filesystem.HunkFileCount)
+		}
+		if member.Hunk != nil {
+			fmt.Printf("             Hunk %d segments, code=%d data=%d bss=%d bytes\n", member.Hunk.HunkCount, member.Hunk.CodeBytes, member.Hunk.DataBytes, member.Hunk.BSSBytes)
+		}
+		if member.Detection != "" {
+			fmt.Printf("             Detect %s\n", member.Detection)
+		}
+		if member.Error != "" {
+			fmt.Printf("             Error %s\n", member.Error)
+		}
+	}
 	if result.ADF != nil {
 		fmt.Printf("Disk:     %s (%d blocks)\n", result.ADF.DiskType, result.ADF.Blocks)
 		fmt.Printf("DOS type: DOS\\%d (%s)\n", result.ADF.DOSVersion, result.ADF.Filesystem)
