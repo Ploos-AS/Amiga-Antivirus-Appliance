@@ -67,7 +67,7 @@ Missing database identity fails closed instead of inventing provenance. Raw resu
 
 ## Bounded ClamAV execution adapter
 
-M7.1 now also includes a bounded `clamscan` execution adapter. `RunClamAV` scans one already-existing regular host file and uses `AAA_CLAMSCAN` when configured, otherwise `clamscan` from `PATH`.
+M7.1 includes a bounded `clamscan` execution adapter. `RunClamAV` scans one already-existing regular host file and uses `AAA_CLAMSCAN` when configured, otherwise `clamscan` from `PATH`.
 
 The adapter:
 
@@ -81,7 +81,22 @@ The adapter:
 - rejects exit codes above 1, output/exit-code mismatches, multiple `FOUND` lines, missing result lines, timeouts and output-limit violations;
 - converts successful `FOUND` results immediately into the same normalized M7.1 evidence model and correlation policy used by the parser-only helper.
 
-A clean ClamAV result is returned as clean engine evidence state but does not create malware evidence. This slice intentionally does not yet merge the ClamAV verdict into AAA's top-level native scanner verdict or automatically create a Signature Factory candidate from a ClamAV-only detection; that integration remains explicit follow-up work.
+A clean ClamAV result is returned as clean engine evidence state but does not create malware evidence.
+
+## CLI and Signature Factory integration
+
+The bounded adapter is integrated explicitly at the AAA command layer to avoid coupling the native scanner package to Signature Factory. `aaa scan --clamav <file>` first performs the native AAA scan and then runs ClamAV against the exact submitted host path. The ordinary `aaa scan <file>` behavior remains unchanged, so ClamAV remains opt-in and absence of `clamscan` cannot silently change native scan semantics.
+
+When `--clamav` is enabled:
+
+- ClamAV execution/parsing errors fail the requested ClamAV scan instead of being reported as clean;
+- human-readable output reports the ClamAV verdict, engine version, database version and detection name when present;
+- JSON output wraps the native scan result and the structured ClamAV result without mutating the native scanner result schema;
+- an infected ClamAV result is passed to Signature Factory candidate recording with normalized ClamAV evidence/provenance;
+- clean ClamAV results do not create malware candidates;
+- native infected-candidate recording continues independently of ClamAV.
+
+This integration deliberately does not redefine the native scanner's top-level verdict. Engine aggregation and cross-engine confidence policy remain later explicit work rather than being inferred from one external-engine result.
 
 ## Historical engines
 
@@ -96,34 +111,24 @@ M8 adapters will eventually feed normalized evidence into this model for:
 
 Those adapters must record engine version, database/XVS/Brain identity where observable, OS profile and raw-result provenance. Missing metadata must remain missing rather than being guessed.
 
-## M7.1 initial code qualification
+## M7.1 code qualification
 
-The first M7.1 slice is code-qualified when:
+M7.1 is code-qualified for the normalized evidence, ClamAV provenance, bounded ClamAV execution and explicit CLI/candidate integration slices when:
 
 - normalized evidence fields exist without breaking M7.0 schema-v1 records;
 - evidence validation fails closed for partially attributed records;
 - correlated frontends sharing one `correlation_key` count once;
 - independent keys are returned deterministically;
 - AAA native bootblock evidence carries structured attribution and correlation identity;
-- tests use synthetic evidence only;
+- strict ClamAV engine/database and result parsing is covered by synthetic tests;
+- the ClamAV evidence constructor requires engine and signature database identity;
+- ClamAV correlation uses database identity rather than frontend or engine revision;
+- the execution adapter has no shell interpolation, validates regular files, bounds output and execution time, and enforces explicit exit-code/result consistency;
+- synthetic fake-scanner tests cover infected, clean, scanner-error and timeout behavior;
+- the CLI exposes ClamAV only through explicit `--clamav` opt-in and preserves the native result schema when ClamAV is not requested;
+- ClamAV-only infected results can enter Signature Factory with attributable evidence while clean/error states cannot masquerade as malware evidence;
 - gofmt, vet, tests and amd64/arm64 builds pass.
 
-The ClamAV provenance slice additionally requires:
+GitHub Actions CI #162 passed on commit `6e677dde3832bbb4709e505df8db3bc8a55bbd0a`, qualifying the code-changing CLI integration state. This documentation-only qualification commit is a descendant of that green state.
 
-- strict parsing of the common ClamAV engine/database version form;
-- deterministic parsing of `FOUND` versus `OK` result lines;
-- a normalized ClamAV evidence constructor that requires engine and signature database identity;
-- correlation by ClamAV database identity rather than frontend or engine revision;
-- synthetic-only tests covering positive, clean and fail-closed cases.
-
-The bounded execution slice additionally requires:
-
-- no shell interpolation of the target path;
-- regular-file validation;
-- bounded stdout/stderr;
-- bounded execution time;
-- explicit ClamAV exit-code semantics;
-- fail-closed result/output consistency checks;
-- synthetic fake-scanner tests for infected, clean, scanner-error and timeout behavior.
-
-Further M7.1 work will integrate ClamAV engine results with AAA's aggregate scan/candidate pipeline and later historical-engine results before M7.2 export work begins.
+Further M7.1 work is reserved for historical-engine evidence and later explicit aggregate confidence policy. The ClamAV CLI/candidate integration slice is closed; M7.2 export work may proceed without claiming M8 historical-engine runtime qualification.
