@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/adf"
+	archivepkg "github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/archive"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/hunk"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/signatures"
 )
@@ -23,6 +25,7 @@ type Result struct {
 	Format         string                  `json:"format"`
 	Verdict        string                  `json:"verdict"`
 	Detection      string                  `json:"detection,omitempty"`
+	Archive        *archivepkg.Analysis    `json:"archive,omitempty"`
 	ADF            *adf.Analysis           `json:"adf,omitempty"`
 	Filesystem     *adf.FilesystemAnalysis `json:"filesystem,omitempty"`
 	Hunk           *hunk.Analysis          `json:"hunk,omitempty"`
@@ -69,27 +72,25 @@ func ScanFile(path string) (Result, error) {
 		Verdict: "unknown",
 	}
 
-	if format == "adf" {
-		analysis, err := adf.AnalyzeFile(path)
-		if err != nil {
-			return Result{}, fmt.Errorf("analyze ADF: %w", err)
+	switch format {
+	case "adf":
+		if err := analyzeADFPath(&result, path); err != nil {
+			return Result{}, err
 		}
-		result.ADF = analysis
-
-		filesystem, err := adf.AnalyzeFilesystem(path)
+	case "adz":
+		data, err := os.ReadFile(path)
 		if err != nil {
-			return Result{}, fmt.Errorf("analyze ADF filesystem: %w", err)
+			return Result{}, fmt.Errorf("read ADZ: %w", err)
 		}
-		result.Filesystem = filesystem
-
-		db, err := signatures.LoadBundled()
+		expanded, archiveAnalysis, err := archivepkg.DecodeADZ(data)
 		if err != nil {
-			return Result{}, fmt.Errorf("load bootblock signatures: %w", err)
+			return Result{}, fmt.Errorf("decode ADZ: %w", err)
 		}
-		applyBootblockDatabase(&result, db)
-	}
-
-	if format == "amiga-hunk-executable" {
+		result.Archive = archiveAnalysis
+		if err := analyzeADFBytes(&result, expanded); err != nil {
+			return Result{}, fmt.Errorf("analyze expanded ADZ ADF: %w", err)
+		}
+	case "amiga-hunk-executable":
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return Result{}, fmt.Errorf("read Hunk executable: %w", err)
@@ -98,6 +99,45 @@ func ScanFile(path string) (Result, error) {
 	}
 
 	return result, nil
+}
+
+func analyzeADFPath(result *Result, path string) error {
+	analysis, err := adf.AnalyzeFile(path)
+	if err != nil {
+		return fmt.Errorf("analyze ADF: %w", err)
+	}
+	result.ADF = analysis
+
+	filesystem, err := adf.AnalyzeFilesystem(path)
+	if err != nil {
+		return fmt.Errorf("analyze ADF filesystem: %w", err)
+	}
+	result.Filesystem = filesystem
+	return applyBundledBootblockDatabase(result)
+}
+
+func analyzeADFBytes(result *Result, image []byte) error {
+	analysis, err := adf.Analyze(bytes.NewReader(image), int64(len(image)))
+	if err != nil {
+		return err
+	}
+	result.ADF = analysis
+
+	filesystem, err := adf.AnalyzeFilesystemBytes(image)
+	if err != nil {
+		return fmt.Errorf("analyze ADF filesystem: %w", err)
+	}
+	result.Filesystem = filesystem
+	return applyBundledBootblockDatabase(result)
+}
+
+func applyBundledBootblockDatabase(result *Result) error {
+	db, err := signatures.LoadBundled()
+	if err != nil {
+		return fmt.Errorf("load bootblock signatures: %w", err)
+	}
+	applyBootblockDatabase(result, db)
+	return nil
 }
 
 func applyBootblockDatabase(result *Result, db *signatures.Database) {
