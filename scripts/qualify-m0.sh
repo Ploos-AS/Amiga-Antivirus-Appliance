@@ -42,6 +42,8 @@ user=$(systemctl show -p User --value aaa.service 2>/dev/null || true)
 if command -v clamscan >/dev/null 2>&1; then pass "clamscan available: $(clamscan --version | head -n 1)"; else warn "clamscan not available"; fi
 if command -v clamdscan >/dev/null 2>&1; then pass "clamdscan available"; else warn "clamdscan not available"; fi
 if command -v xdms >/dev/null 2>&1; then pass "xdms available"; else fail "xdms not available (required for DMS scanning)"; fi
+if command -v lsar >/dev/null 2>&1; then pass "lsar available"; else fail "lsar not available (required for LZX scanning)"; fi
+if command -v unar >/dev/null 2>&1; then pass "unar available"; else fail "unar not available (required for LZX scanning)"; fi
 
 if [ "$failed" -ne 0 ]; then echo "M0 qualification: FAIL" >&2; exit 1; fi
 
