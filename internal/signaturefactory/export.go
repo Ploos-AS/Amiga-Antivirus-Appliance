@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 type nativeBootblockEntry struct {
@@ -121,6 +122,79 @@ func (s *Store) ExportNativeBootblocks() (string, int, error) {
 		return "", 0, err
 	}
 	return path, len(entries), nil
+}
+
+// ExportClamAVHashes builds a ClamAV SHA-256 hash database (.hsb) exclusively
+// from promoted exact file candidates attributed to ClamAV. Each output line is
+// HashString:FileSize:MalwareName and output ordering is deterministic.
+func (s *Store) ExportClamAVHashes() (string, int, error) {
+	promoted, err := s.ListPromoted()
+	if err != nil {
+		return "", 0, err
+	}
+
+	type line struct {
+		sha256 string
+		text   string
+		id     string
+	}
+	lines := make([]line, 0, len(promoted))
+	seen := make(map[string]string)
+	for _, candidate := range promoted {
+		if candidate.Kind != KindFileSHA256 || candidate.SourceEngine != ClamAVEngineName {
+			continue
+		}
+		name := strings.TrimSpace(candidate.DetectionName)
+		if name == "" {
+			name = strings.TrimSpace(candidate.MalwareName)
+		}
+		if err := validateClamAVSignatureName(name); err != nil {
+			return "", 0, fmt.Errorf("candidate %s: %w", candidate.ID, err)
+		}
+		if previous, ok := seen[candidate.SampleSHA256]; ok {
+			return "", 0, fmt.Errorf("duplicate promoted ClamAV sha256 %s in %s and %s", candidate.SampleSHA256, previous, candidate.ID)
+		}
+		seen[candidate.SampleSHA256] = candidate.ID
+		lines = append(lines, line{
+			sha256: candidate.SampleSHA256,
+			text:   fmt.Sprintf("%s:%d:%s", candidate.SampleSHA256, candidate.SampleSize, name),
+			id:     candidate.ID,
+		})
+	}
+
+	sort.Slice(lines, func(i, j int) bool {
+		if lines[i].sha256 == lines[j].sha256 {
+			return lines[i].id < lines[j].id
+		}
+		return lines[i].sha256 < lines[j].sha256
+	})
+
+	var encoded bytes.Buffer
+	for _, item := range lines {
+		encoded.WriteString(item.text)
+		encoded.WriteByte('\n')
+	}
+
+	path := filepath.Join(s.Root, "generated", "clamav", "aaa.hsb")
+	if err := writeGeneratedFile(filepath.Dir(path), path, encoded.Bytes()); err != nil {
+		return "", 0, err
+	}
+	return path, len(lines), nil
+}
+
+func validateClamAVSignatureName(name string) error {
+	if name == "" {
+		return errors.New("ClamAV signature name is required")
+	}
+	if strings.ContainsRune(name, ':') {
+		return errors.New("ClamAV signature name contains ':'")
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			return errors.New("ClamAV signature name contains control characters")
+		}
+	}
+	return nil
 }
 
 func writeGeneratedFile(dir, path string, encoded []byte) error {
