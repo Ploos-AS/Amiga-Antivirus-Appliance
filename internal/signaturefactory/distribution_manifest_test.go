@@ -73,7 +73,7 @@ func TestDistributionManifestRejectsUnsafeAndUnsupportedPayloads(t *testing.T) {
 		{"dot", func(m *DistributionManifest) { m.Payloads[0].Path = "aaa/./bootblocks.json" }},
 		{"empty segment", func(m *DistributionManifest) { m.Payloads[0].Path = "aaa//bootblocks.json" }},
 		{"backslash", func(m *DistributionManifest) { m.Payloads[0].Path = `aaa\bootblocks.json` }},
-		{"target path mismatch", func(m *DistributionManifest) { m.Payloads[0].Path = "clamav/aaa.hsb" }},
+		{"target path mismatch", func(m *DistributionManifest) { m.Payloads[0].Path = "aaa/bootblocks.json" }},
 		{"unknown target", func(m *DistributionManifest) { m.Payloads[0].Target = DistributionTarget("future") }},
 		{"bad sha", func(m *DistributionManifest) { m.Payloads[0].SHA256 = strings.Repeat("AA", 32) }},
 		{"negative size", func(m *DistributionManifest) { m.Payloads[0].Size = -1 }},
@@ -92,6 +92,7 @@ func TestDistributionManifestRejectsUnsafeAndUnsupportedPayloads(t *testing.T) {
 func TestDistributionManifestRejectsAmbiguityAndInvalidMetadata(t *testing.T) {
 	manifest := distributionManifestFixture()
 	manifest.Payloads[1].Target = manifest.Payloads[0].Target
+	manifest.Payloads[1].Path = manifest.Payloads[0].Path
 	if err := manifest.Validate(); err == nil || !strings.Contains(err.Error(), "duplicate distribution target") {
 		t.Fatalf("expected duplicate target failure, got %v", err)
 	}
