@@ -2,9 +2,9 @@
 
 ## Status
 
-**Qualification candidate.**
+**Code-qualified.**
 
-M7.2 provides deterministic, promotion-gated signature export for AAA's native bootblock database and ClamAV SHA-256 hash databases. The exporter code and validation tests are green through GitHub Actions CI #184. Final closure requires the normal CI gates to remain green on the qualification-record HEAD.
+M7.2 provides deterministic, promotion-gated signature export for AAA's native bootblock database and ClamAV SHA-256 hash databases. The exporter code, validation tests, CLI contract and final qualification record have all passed the normal GitHub Actions CI gates.
 
 ## Qualified scope
 
@@ -76,7 +76,13 @@ The final CLI help correction was committed as:
 500f422ff60cb97f0a3c7432fa577a98f6f5bc1d
 ```
 
-The normal CI workflow for the qualification-record HEAD must pass before changing this document's status from **Qualification candidate** to **Code-qualified**.
+The qualification record was committed as:
+
+```text
+a592b0b16fbfb76e10cbb2532b688edb6399f261
+```
+
+GitHub Actions CI run **#186** completed successfully on that qualification-record HEAD, covering the normal format, module-metadata, `go vet`, test, linux/amd64 build and linux/arm64 build gates.
 
 ## Remaining work outside M7.2
 
@@ -91,4 +97,4 @@ M7.2 does not claim completion of:
 
 ## Exit decision
 
-M7.2 is ready for final code-qualification once CI is green on this qualification-record HEAD. Until then, the implementation remains a qualification candidate rather than formally closed.
+M7.2 satisfies its code-qualification criteria and is closed as **code-qualified**. Development may proceed to **M7.3 corpus validation / false-positive gates / pattern qualification** without treating later distribution or appliance-runtime work as complete.
