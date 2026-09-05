@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -119,8 +120,12 @@ func DecodeCorpusManifestStrict(data []byte) (CorpusManifest, error) {
 	if err := decoder.Decode(&manifest); err != nil {
 		return CorpusManifest{}, fmt.Errorf("decode corpus manifest: %w", err)
 	}
-	if decoder.More() {
-		return CorpusManifest{}, errors.New("decode corpus manifest: trailing data")
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return CorpusManifest{}, errors.New("decode corpus manifest: trailing data")
+		}
+		return CorpusManifest{}, fmt.Errorf("decode corpus manifest trailing data: %w", err)
 	}
 	if err := manifest.Validate(); err != nil {
 		return CorpusManifest{}, err
