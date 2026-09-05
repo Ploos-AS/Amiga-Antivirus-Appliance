@@ -53,6 +53,7 @@ type Result struct {
 
 type archiveBudget struct {
 	expanded int64
+	members  int
 }
 
 func ScanFile(path string) (Result, error) {
@@ -136,7 +137,10 @@ func ScanFile(path string) (Result, error) {
 			return Result{}, fmt.Errorf("decode %s: %w", format, err)
 		}
 		result.Archive = archiveAnalysis
-		budget := &archiveBudget{expanded: archiveAnalysis.ExpandedSize}
+		budget := &archiveBudget{
+			expanded: archiveAnalysis.ExpandedSize,
+			members:  len(archiveAnalysis.Members),
+		}
 		result.MemberResults = scanArchiveMembersDepth(archiveAnalysis, members, 1, budget)
 		propagateMemberVerdict(&result)
 	case "amiga-hunk-executable":
@@ -158,6 +162,24 @@ func decodeArchive(format string, data []byte) ([]archivepkg.ExpandedMember, *ar
 		return archivepkg.DecodeLHA(data)
 	case "lzx":
 		return archivepkg.DecodeLZX(data)
+	default:
+		return nil, nil, fmt.Errorf("unsupported archive format: %s", format)
+	}
+}
+
+func decodeArchiveLimited(format string, data []byte, budget *archiveBudget) ([]archivepkg.ExpandedMember, *archivepkg.Analysis, error) {
+	remainingBytes, remainingMembers, ok := remainingArchiveBudget(budget)
+	if !ok {
+		return nil, nil, fmt.Errorf("global archive safety budget exhausted")
+	}
+
+	switch format {
+	case "zip":
+		return archivepkg.DecodeZIPLimited(data, remainingBytes, remainingMembers)
+	case "lha":
+		return archivepkg.DecodeLHALimited(data, remainingBytes, remainingMembers)
+	case "lzx":
+		return archivepkg.DecodeLZXLimited(data, remainingBytes, remainingMembers)
 	default:
 		return nil, nil, fmt.Errorf("unsupported archive format: %s", format)
 	}
@@ -207,13 +229,18 @@ func scanMemberPayload(memberResult *MemberResult, data []byte, depth int, budge
 	case "amiga-hunk-executable":
 		memberResult.Hunk = hunk.Analyze(data)
 	case "adz":
-		expanded, archiveAnalysis, err := archivepkg.DecodeADZ(data)
-		if err != nil {
-			memberResult.Error = err.Error()
+		remainingBytes, remainingMembers, ok := remainingArchiveBudget(budget)
+		if !ok || remainingMembers < 1 {
+			memberResult.Error = "nested archive decode blocked by global safety limit"
 			return
 		}
-		if !reserveArchiveBudget(budget, archiveAnalysis.ExpandedSize) {
-			memberResult.Error = fmt.Sprintf("nested archive expansion exceeds %d-byte global safety limit", archivepkg.MaxExpandedSize)
+		expanded, archiveAnalysis, err := archivepkg.DecodeADZLimited(data, remainingBytes)
+		if err != nil {
+			memberResult.Error = fmt.Sprintf("nested archive decode failed within global safety limit: %v", err)
+			return
+		}
+		if !reserveArchiveBudget(budget, archiveAnalysis.ExpandedSize, 1) {
+			memberResult.Error = "nested archive decode blocked by global safety limit"
 			return
 		}
 		memberResult.Archive = archiveAnalysis
@@ -228,13 +255,13 @@ func scanMemberPayload(memberResult *MemberResult, data []byte, depth int, budge
 			memberResult.Error = fmt.Sprintf("nested archive depth exceeds limit %d", MaxArchiveDepth)
 			return
 		}
-		members, archiveAnalysis, err := decodeArchive(memberResult.Format, data)
+		members, archiveAnalysis, err := decodeArchiveLimited(memberResult.Format, data, budget)
 		if err != nil {
-			memberResult.Error = err.Error()
+			memberResult.Error = fmt.Sprintf("nested archive decode failed within global safety limit: %v", err)
 			return
 		}
-		if !reserveArchiveBudget(budget, archiveAnalysis.ExpandedSize) {
-			memberResult.Error = fmt.Sprintf("nested archive expansion exceeds %d-byte global safety limit", archivepkg.MaxExpandedSize)
+		if !reserveArchiveBudget(budget, archiveAnalysis.ExpandedSize, len(archiveAnalysis.Members)) {
+			memberResult.Error = "nested archive decode blocked by global safety limit"
 			return
 		}
 		memberResult.Archive = archiveAnalysis
@@ -245,14 +272,27 @@ func scanMemberPayload(memberResult *MemberResult, data []byte, depth int, budge
 	}
 }
 
-func reserveArchiveBudget(budget *archiveBudget, n int64) bool {
-	if budget == nil || n < 0 {
+func remainingArchiveBudget(budget *archiveBudget) (int64, int, bool) {
+	if budget == nil || budget.expanded < 0 || budget.members < 0 {
+		return 0, 0, false
+	}
+	remainingBytes := archivepkg.MaxExpandedSize - budget.expanded
+	remainingMembers := archivepkg.MaxMembers - budget.members
+	if remainingBytes <= 0 || remainingMembers <= 0 {
+		return 0, 0, false
+	}
+	return remainingBytes, remainingMembers, true
+}
+
+func reserveArchiveBudget(budget *archiveBudget, expanded int64, members int) bool {
+	if budget == nil || expanded < 0 || members < 0 {
 		return false
 	}
-	if n > archivepkg.MaxExpandedSize-budget.expanded {
+	if expanded > archivepkg.MaxExpandedSize-budget.expanded || members > archivepkg.MaxMembers-budget.members {
 		return false
 	}
-	budget.expanded += n
+	budget.expanded += expanded
+	budget.members += members
 	return true
 }
 
