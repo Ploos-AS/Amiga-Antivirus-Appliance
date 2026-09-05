@@ -102,7 +102,12 @@ func candidateFromScanNode(sampleSHA string, sampleSize int64, format, verdict, 
 			DetectionName:   detectionOrName(detection, match.Name),
 			Confidence:      ConfidenceConfirmed,
 			Evidence: []Evidence{
-				{Type: "bootblock-database", Detail: match.Source},
+				{
+					Type:           "bootblock-database",
+					Detail:         match.Source,
+					SourceEngine:   "aaa-native",
+					CorrelationKey: "aaa-native:bootblock-db:" + strings.TrimSpace(match.Source),
+				},
 			},
 			CreatedAt: createdAt,
 		})
