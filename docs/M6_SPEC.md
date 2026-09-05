@@ -11,7 +11,7 @@ M6 is delivered incrementally:
 - M6.0: ADZ (gzip-wrapped ADF), bounded in-memory expansion, member hashing, and full scanner integration.
 - M6.1a: ZIP member enumeration/extraction, hashing, and member format classification.
 - M6.1b: LHA/LZH member extraction plus full native per-member ADF/Hunk scanning for ZIP and LHA.
-- M6.2: DMS disk-image decoding.
+- M6.2: DMS disk-image decoding through the reference xDMS decoder, with bounded stdin/stdout integration into the ADF scanner pipeline.
 - M6.3: LZX support and nested-container policy.
 
 A format is not claimed as supported merely because M1 can identify it.
@@ -51,9 +51,27 @@ ZIP and LHA members are then passed through the native scanner without writing e
 
 An infected member propagates `infected` to the outer archive result with the member name retained in the detection string. Unknown or unsupported members remain `unknown`. Nested archive expansion is intentionally deferred to M6.3 so archive recursion limits can be specified explicitly before enabling it.
 
+## M6.2 DMS contract
+
+DMS is decoded with the reference `xdms` utility. xDMS is public-domain software and is packaged by Debian. The appliance installer installs the Debian `xdms` package alongside ClamAV.
+
+`internal/archive.DecodeDMS` requires a `DMS!` header and invokes xDMS as a bounded subprocess using:
+
+`xdms -q u stdin +stdout`
+
+The submitted DMS bytes are sent through stdin and the expanded disk image is read from stdout. AAA does not create a temporary submitted DMS file or extracted ADF path. Decoder stdout is capped at 32 MiB and execution is limited to 15 seconds. Missing xDMS, decoder failure, timeout, empty output, over-limit output, unsupported ADF geometry, or a non-AmigaDOS result fails closed.
+
+The resulting bytes are hashed and then passed through the same ADF chain used by ADZ:
+
+`DMS → xDMS → expanded ADF → bootblock analysis/signatures → OFS/FFS traversal → reconstructed file SHA-256 → Hunk analysis`
+
+`AAA_XDMS` may override the xDMS executable path for controlled testing or deployment. It is an executable path only; arguments are not interpreted through a shell.
+
 ## Dependency policy
 
 AAA itself is MIT licensed. The LHA reader is also MIT licensed and remains a separately attributed third-party dependency. M6.1b raises the build baseline to Go 1.24 because the selected current LHA module requires Go 1.24 or later. Dependency checksums are committed in `go.sum`.
+
+xDMS is a separate runtime utility rather than linked project code. Its upstream distribution states that xDMS is public-domain software. AAA does not relicense external components.
 
 ## Qualification
 
@@ -62,6 +80,8 @@ M6.0 is code-qualified when CI passes archive and scanner ADZ tests, gofmt, `go 
 M6.1a is code-qualified when the same CI additionally passes ZIP unit tests and a scanner integration test proving member enumeration, SHA-256, and format classification.
 
 M6.1b is code-qualified when CI additionally passes LHA decode/error tests, full ZIP ADF/Hunk member scan tests, an LHA Hunk member scan test, module metadata checks, vet, all tests, and both architecture builds.
+
+M6.2 is code-qualified when CI passes DMS magic/error tests, bounded xDMS wrapper tests, a scanner integration test proving decoded bytes reach ADF analysis, module metadata checks, vet, all tests, and both architecture builds. Final runtime qualification additionally requires the real Debian xDMS package on the Orange Pi/DietPi reference appliance and a provenance-safe DMS fixture.
 
 ## Exit criteria for full M6
 
