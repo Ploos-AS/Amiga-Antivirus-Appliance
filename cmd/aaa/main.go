@@ -9,7 +9,7 @@ import (
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanner"
 )
 
-const version = "0.4.0-dev"
+const version = "0.4.1-dev"
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "AAA — Amiga AntiVirus Appliance\n\n")
@@ -82,7 +82,14 @@ func scanCommand(args []string) {
 			fmt.Printf("FS root:  %d valid=%t\n", result.Filesystem.RootBlock, result.Filesystem.RootBlockValid)
 			fmt.Printf("FS items: %d files, %d directories\n", result.Filesystem.FileCount, result.Filesystem.DirectoryCount)
 			for _, entry := range result.Filesystem.Entries {
-				fmt.Printf("  %-9s %s [block %d]\n", entry.Type, entry.Path, entry.HeaderBlock)
+				if entry.Payload != nil {
+					fmt.Printf("  %-9s %s [block %d, %d bytes, complete=%t]\n", entry.Type, entry.Path, entry.HeaderBlock, entry.Payload.Size, entry.Payload.Complete)
+					if entry.Payload.SHA256 != "" {
+						fmt.Printf("             SHA-256 %s\n", entry.Payload.SHA256)
+					}
+				} else {
+					fmt.Printf("  %-9s %s [block %d]\n", entry.Type, entry.Path, entry.HeaderBlock)
+				}
 			}
 			for _, warning := range result.Filesystem.Warnings {
 				fmt.Printf("FS warn:  %s\n", warning)
