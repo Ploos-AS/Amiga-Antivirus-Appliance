@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/adf"
+	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/hunk"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/signatures"
 )
 
@@ -137,7 +138,7 @@ func TestScanADZRejectsNonADFExpansion(t *testing.T) {
 	}
 }
 
-func TestScanZIPEnumeratesAndClassifiesMembers(t *testing.T) {
+func TestScanZIPScansADFMember(t *testing.T) {
 	var compressed bytes.Buffer
 	zw := zip.NewWriter(&compressed)
 	w, err := zw.Create("disk.adf")
@@ -159,11 +160,57 @@ func TestScanZIPEnumeratesAndClassifiesMembers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Format != "zip" || got.Archive == nil || len(got.Archive.Members) != 1 {
+	if got.Format != "zip" || got.Archive == nil || len(got.Archive.Members) != 1 || len(got.MemberResults) != 1 {
 		t.Fatalf("missing ZIP analysis: %+v", got)
 	}
-	if got.Archive.Members[0].Name != "disk.adf" || got.Archive.Members[0].Format != "adf" || len(got.Archive.Members[0].SHA256) != 64 {
-		t.Fatalf("unexpected ZIP member: %+v", got.Archive.Members[0])
+	member := got.MemberResults[0]
+	if member.Name != "disk.adf" || member.Format != "adf" || member.ADF == nil || member.Filesystem == nil || member.Error != "" {
+		t.Fatalf("ZIP ADF member not fully scanned: %+v", member)
+	}
+}
+
+func TestScanZIPScansHunkMember(t *testing.T) {
+	var compressed bytes.Buffer
+	zw := zip.NewWriter(&compressed)
+	w, err := zw.Create("C/tool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(testHunkExecutable()); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "tools.zip")
+	if err := os.WriteFile(path, compressed.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ScanFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.MemberResults) != 1 || got.MemberResults[0].Hunk == nil || !got.MemberResults[0].Hunk.Recognized {
+		t.Fatalf("ZIP Hunk member not scanned: %+v", got.MemberResults)
+	}
+}
+
+func TestScanLHAScansHunkMember(t *testing.T) {
+	data := makeLH0Archive("C/tool", testHunkExecutable())
+	path := filepath.Join(t.TempDir(), "tools.lha")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ScanFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Format != "lha" || got.Archive == nil || len(got.MemberResults) != 1 {
+		t.Fatalf("missing LHA analysis: %+v", got)
+	}
+	if got.MemberResults[0].Format != "amiga-hunk-executable" || got.MemberResults[0].Hunk == nil || !got.MemberResults[0].Hunk.Recognized {
+		t.Fatalf("LHA Hunk member not scanned: %+v", got.MemberResults[0])
 	}
 }
 
@@ -200,4 +247,62 @@ func testADFImage() []byte {
 	image[13] = 0xf9
 	binary.BigEndian.PutUint32(image[4:8], adf.CalculateBootblockChecksum(image[:adf.BootBlockSize]))
 	return image
+}
+
+func testHunkExecutable() []byte {
+	words := []uint32{
+		hunk.HUNK_HEADER,
+		0,
+		1,
+		0,
+		0,
+		1,
+		hunk.HUNK_CODE,
+		1,
+		0x4e750000,
+		hunk.HUNK_END,
+	}
+	data := make([]byte, len(words)*4)
+	for i, word := range words {
+		binary.BigEndian.PutUint32(data[i*4:], word)
+	}
+	return data
+}
+
+func makeLH0Archive(name string, payload []byte) []byte {
+	nameBytes := []byte(name)
+	headerSize := len(nameBytes) + 22
+	header := make([]byte, 0, headerSize+2)
+	header = append(header, byte(headerSize), 0)
+	header = append(header, []byte("-lh0-")...)
+	var word [4]byte
+	binary.LittleEndian.PutUint32(word[:], uint32(len(payload)))
+	header = append(header, word[:]...)
+	header = append(header, word[:]...)
+	header = append(header, 0, 0, 0, 0)
+	header = append(header, 0x20, 0, byte(len(nameBytes)))
+	header = append(header, nameBytes...)
+	crc := crc16IBM(payload)
+	header = append(header, byte(crc), byte(crc>>8))
+	var sum byte
+	for _, b := range header[2:] {
+		sum += b
+	}
+	header[1] = sum
+	return append(append(header, payload...), 0)
+}
+
+func crc16IBM(data []byte) uint16 {
+	var crc uint16
+	for _, b := range data {
+		crc ^= uint16(b)
+		for i := 0; i < 8; i++ {
+			if crc&1 != 0 {
+				crc = (crc >> 1) ^ 0xa001
+			} else {
+				crc >>= 1
+			}
+		}
+	}
+	return crc
 }
