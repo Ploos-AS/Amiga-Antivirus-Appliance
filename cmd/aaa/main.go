@@ -84,6 +84,10 @@ func scanCommand(args []string) {
 			fmt.Fprintf(os.Stderr, "clamav scan failed: %v\n", err)
 			os.Exit(1)
 		}
+		if err := signaturefactory.VerifyFileSHA256(path, result.SHA256); err != nil {
+			fmt.Fprintf(os.Stderr, "clamav input integrity failed: %v\n", err)
+			os.Exit(1)
+		}
 		clamResult = &clam
 		if clam.Verdict == "infected" {
 			if err := recordClamAVCandidate(result, clam); err != nil {
