@@ -37,11 +37,6 @@ const (
 
 var candidateIDPattern = regexp.MustCompile(`^AAA\.Amiga\.[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.[a-f0-9]{16}$`)
 
-type Evidence struct {
-	Type   string `json:"type"`
-	Detail string `json:"detail"`
-}
-
 type Candidate struct {
 	Schema             int        `json:"schema"`
 	ID                 string     `json:"id"`
@@ -165,6 +160,11 @@ func (c Candidate) Validate() error {
 	}
 	if c.BootblockSHA256 != "" && !validSHA256(c.BootblockSHA256) {
 		return errors.New("invalid bootblock_sha256")
+	}
+	for i, evidence := range c.Evidence {
+		if err := evidence.Validate(); err != nil {
+			return fmt.Errorf("evidence %d: %w", i, err)
+		}
 	}
 
 	switch c.Kind {
