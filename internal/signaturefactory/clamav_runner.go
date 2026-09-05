@@ -18,12 +18,12 @@ const (
 )
 
 type ClamAVScanResult struct {
-	Verdict            string
-	DetectionName      string
-	EngineVersion      string
-	SignatureDBVersion string
-	RawResult          string
-	Evidence           *Evidence
+	Verdict            string    `json:"verdict"`
+	DetectionName      string    `json:"detection_name,omitempty"`
+	EngineVersion      string    `json:"engine_version"`
+	SignatureDBVersion string    `json:"signature_db_version"`
+	RawResult          string    `json:"raw_result,omitempty"`
+	Evidence           *Evidence `json:"evidence,omitempty"`
 }
 
 func RunClamAV(path string) (ClamAVScanResult, error) {
