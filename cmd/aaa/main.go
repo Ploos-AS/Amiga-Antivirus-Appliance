@@ -9,7 +9,7 @@ import (
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanner"
 )
 
-const version = "0.5.0-dev"
+const version = "0.6.0-dev"
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "AAA — Amiga AntiVirus Appliance\n\n")
@@ -71,6 +71,16 @@ func scanCommand(args []string) {
 	fmt.Printf("Size:     %d bytes\n", result.Size)
 	fmt.Printf("SHA-256:  %s\n", result.SHA256)
 	fmt.Printf("Format:   %s\n", result.Format)
+	if result.Archive != nil {
+		fmt.Printf("Archive:  %s expanded=%d bytes\n", result.Archive.Format, result.Archive.ExpandedSize)
+		for _, member := range result.Archive.Members {
+			fmt.Printf("  member    %s [%d bytes, %s]\n", member.Name, member.Size, member.Format)
+			fmt.Printf("            SHA-256 %s\n", member.SHA256)
+		}
+		for _, warning := range result.Archive.Warnings {
+			fmt.Printf("Archive warn: %s\n", warning)
+		}
+	}
 	if result.ADF != nil {
 		fmt.Printf("Disk:     %s (%d blocks)\n", result.ADF.DiskType, result.ADF.Blocks)
 		fmt.Printf("DOS type: DOS\\%d (%s)\n", result.ADF.DOSVersion, result.ADF.Filesystem)
