@@ -90,22 +90,22 @@ func ScanFile(path string) (Result, error) {
 		if err := analyzeADFBytes(&result, expanded); err != nil {
 			return Result{}, fmt.Errorf("analyze expanded ADZ ADF: %w", err)
 		}
-	case "zip":
+	case "zip", "lha":
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return Result{}, fmt.Errorf("read ZIP: %w", err)
+			return Result{}, fmt.Errorf("read %s: %w", format, err)
 		}
-		members, archiveAnalysis, err := archivepkg.DecodeZIP(data)
+		var members []archivepkg.ExpandedMember
+		var archiveAnalysis *archivepkg.Analysis
+		if format == "zip" {
+			members, archiveAnalysis, err = archivepkg.DecodeZIP(data)
+		} else {
+			members, archiveAnalysis, err = archivepkg.DecodeLHA(data)
+		}
 		if err != nil {
-			return Result{}, fmt.Errorf("decode ZIP: %w", err)
+			return Result{}, fmt.Errorf("decode %s: %w", format, err)
 		}
-		for i, member := range members {
-			memberHead := member.Data
-			if len(memberHead) > 4096 {
-				memberHead = memberHead[:4096]
-			}
-			archiveAnalysis.Members[i].Format = DetectFormat(member.Name, memberHead, int64(len(member.Data)))
-		}
+		classifyArchiveMembers(archiveAnalysis, members)
 		result.Archive = archiveAnalysis
 	case "amiga-hunk-executable":
 		data, err := os.ReadFile(path)
@@ -116,6 +116,22 @@ func ScanFile(path string) (Result, error) {
 	}
 
 	return result, nil
+}
+
+func classifyArchiveMembers(analysis *archivepkg.Analysis, members []archivepkg.ExpandedMember) {
+	if analysis == nil {
+		return
+	}
+	for i, member := range members {
+		if i >= len(analysis.Members) {
+			break
+		}
+		memberHead := member.Data
+		if len(memberHead) > 4096 {
+			memberHead = memberHead[:4096]
+		}
+		analysis.Members[i].Format = DetectFormat(member.Name, memberHead, int64(len(member.Data)))
+	}
 }
 
 func analyzeADFPath(result *Result, path string) error {
