@@ -59,7 +59,7 @@ func TestNestedZIPDepthLimit(t *testing.T) {
 func TestNestedArchiveGlobalExpansionBudget(t *testing.T) {
 	payload := bytes.Repeat([]byte{'A'}, 20*1024*1024)
 	inner := makeZIP(t, "big.bin", payload)
-	outer := makeZIP(t, "inner.zip", inner)
+	outer := makeZIPTwo(t, "padding.bin", payload, "inner.zip", inner)
 
 	path := filepath.Join(t.TempDir(), "budget.zip")
 	if err := os.WriteFile(path, outer, 0600); err != nil {
@@ -69,11 +69,11 @@ func TestNestedArchiveGlobalExpansionBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.MemberResults) != 1 {
+	if len(got.MemberResults) != 2 {
 		t.Fatalf("unexpected results: %+v", got.MemberResults)
 	}
-	if !strings.Contains(got.MemberResults[0].Error, "global safety limit") {
-		t.Fatalf("expected global expansion budget error, got %+v", got.MemberResults[0])
+	if !strings.Contains(got.MemberResults[1].Error, "global safety limit") {
+		t.Fatalf("expected global expansion budget error, got %+v", got.MemberResults[1])
 	}
 }
 
@@ -87,6 +87,28 @@ func makeZIP(t *testing.T, name string, payload []byte) []byte {
 	}
 	if _, err := w.Write(payload); err != nil {
 		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func makeZIPTwo(t *testing.T, name1 string, payload1 []byte, name2 string, payload2 []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, entry := range []struct {
+		name    string
+		payload []byte
+	}{{name1, payload1}, {name2, payload2}} {
+		w, err := zw.Create(entry.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(entry.payload); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := zw.Close(); err != nil {
 		t.Fatal(err)
