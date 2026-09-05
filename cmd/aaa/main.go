@@ -175,7 +175,7 @@ func scanCommand(args []string) {
 		}
 	}
 	if result.Hunk != nil {
-		fmt.Printf("Hunk:     recognized=%t segments=%d code=%d data=%d bss=%d bytes\n", result.Hunk.Recognized, result.Hunk.HunkCount, result.Hunk.CodeBytes, result.Hunk.BSSBytes)
+		fmt.Printf("Hunk:     recognized=%t segments=%d code=%d data=%d bss=%d bytes\n", result.Hunk.Recognized, result.Hunk.HunkCount, result.Hunk.CodeBytes, result.Hunk.DataBytes, result.Hunk.BSSBytes)
 		for _, warning := range result.Hunk.Warnings {
 			fmt.Printf("Hunk warn: %s\n", warning)
 		}
