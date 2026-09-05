@@ -16,18 +16,19 @@ const (
 )
 
 type Analysis struct {
-	DiskType           string `json:"disk_type"`
-	Blocks             int64  `json:"blocks"`
-	DOSVersion         uint8  `json:"dos_version"`
-	Filesystem         string `json:"filesystem"`
-	Bootable           bool   `json:"bootable"`
-	BootblockSHA256    string `json:"bootblock_sha256"`
-	StoredChecksum     uint32 `json:"stored_checksum"`
-	CalculatedChecksum uint32 `json:"calculated_checksum"`
-	ChecksumValid      bool   `json:"checksum_valid"`
-	RootBlock          uint32 `json:"root_block"`
-	ExpectedRootBlock  uint32 `json:"expected_root_block"`
-	RootBlockPlausible bool   `json:"root_block_plausible"`
+	DiskType            string `json:"disk_type"`
+	Blocks              int64  `json:"blocks"`
+	DOSHeaderRecognized bool   `json:"dos_header_recognized"`
+	DOSVersion          uint8  `json:"dos_version,omitempty"`
+	Filesystem          string `json:"filesystem,omitempty"`
+	Bootable            bool   `json:"bootable"`
+	BootblockSHA256     string `json:"bootblock_sha256"`
+	StoredChecksum      uint32 `json:"stored_checksum"`
+	CalculatedChecksum  uint32 `json:"calculated_checksum"`
+	ChecksumValid       bool   `json:"checksum_valid"`
+	RootBlock           uint32 `json:"root_block"`
+	ExpectedRootBlock   uint32 `json:"expected_root_block"`
+	RootBlockPlausible  bool   `json:"root_block_plausible"`
 }
 
 func AnalyzeFile(path string) (*Analysis, error) {
@@ -57,29 +58,31 @@ func Analyze(r io.Reader, size int64) (*Analysis, error) {
 	if _, err := io.ReadFull(r, boot); err != nil {
 		return nil, fmt.Errorf("read bootblock: %w", err)
 	}
-	if string(boot[:3]) != "DOS" || boot[3] > 7 {
-		return nil, fmt.Errorf("not a recognized AmigaDOS ADF bootblock")
-	}
 
+	dosHeaderRecognized := string(boot[:3]) == "DOS" && boot[3] <= 7
 	stored := binary.BigEndian.Uint32(boot[4:8])
 	root := binary.BigEndian.Uint32(boot[8:12])
 	calculated := CalculateBootblockChecksum(boot)
 	bootHash := sha256.Sum256(boot)
 
-	return &Analysis{
-		DiskType:           diskType,
-		Blocks:             blocks,
-		DOSVersion:         boot[3],
-		Filesystem:         filesystemName(boot[3]),
-		Bootable:           hasBootCode(boot[12:]),
-		BootblockSHA256:    hex.EncodeToString(bootHash[:]),
-		StoredChecksum:     stored,
-		CalculatedChecksum: calculated,
-		ChecksumValid:      stored == calculated,
-		RootBlock:          root,
-		ExpectedRootBlock:  expectedRoot,
-		RootBlockPlausible: root == 0 || root == expectedRoot,
-	}, nil
+	analysis := &Analysis{
+		DiskType:            diskType,
+		Blocks:              blocks,
+		DOSHeaderRecognized: dosHeaderRecognized,
+		Bootable:            hasBootCode(boot[12:]),
+		BootblockSHA256:     hex.EncodeToString(bootHash[:]),
+		StoredChecksum:      stored,
+		CalculatedChecksum:  calculated,
+		ChecksumValid:       stored == calculated,
+		RootBlock:           root,
+		ExpectedRootBlock:   expectedRoot,
+		RootBlockPlausible:  root == 0 || root == expectedRoot,
+	}
+	if dosHeaderRecognized {
+		analysis.DOSVersion = boot[3]
+		analysis.Filesystem = filesystemName(boot[3])
+	}
+	return analysis, nil
 }
 
 // CalculateBootblockChecksum returns the checksum value that belongs in bytes
