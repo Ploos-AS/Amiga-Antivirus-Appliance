@@ -77,15 +77,22 @@ func ScanFile(path string) (Result, error) {
 		if err != nil {
 			return Result{}, fmt.Errorf("load bootblock signatures: %w", err)
 		}
-		match := db.Lookup(analysis.BootblockSHA256)
-		result.BootblockMatch = match
-		if match != nil && match.Status == signatures.StatusKnownMalicious {
-			result.Verdict = "infected"
-			result.Detection = "bootblock:" + match.Name
-		}
+		applyBootblockDatabase(&result, db)
 	}
 
 	return result, nil
+}
+
+func applyBootblockDatabase(result *Result, db *signatures.Database) {
+	if result == nil || result.ADF == nil || db == nil {
+		return
+	}
+	match := db.Lookup(result.ADF.BootblockSHA256)
+	result.BootblockMatch = match
+	if match != nil && match.Status == signatures.StatusKnownMalicious {
+		result.Verdict = "infected"
+		result.Detection = "bootblock:" + match.Name
+	}
 }
 
 func DetectFormat(path string, head []byte, size int64) string {
