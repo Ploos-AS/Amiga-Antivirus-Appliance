@@ -13,11 +13,11 @@ import (
 )
 
 const (
-	IPFDecodeTimeout          = 15 * time.Second
-	MaxDerivedSectorImage     = 32 * 1024 * 1024
-	maxIPFMetadataLine        = 64 * 1024
-	maxIPFHelperStderr        = 64 * 1024
-	ipfHelperProtocolVersion  = 1
+	IPFDecodeTimeout         = 15 * time.Second
+	MaxDerivedSectorImage    = 32 * 1024 * 1024
+	maxIPFMetadataLine       = 64 * 1024
+	maxIPFHelperStderr       = 64 * 1024
+	ipfHelperProtocolVersion = 1
 )
 
 type DerivedSectorImage struct {
