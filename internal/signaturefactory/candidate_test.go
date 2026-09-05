@@ -10,16 +10,16 @@ func TestNewExactFileCandidate(t *testing.T) {
 	hash := strings.Repeat("ab", 32)
 	created := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
 	candidate, err := NewExactCandidate(ExactCandidateInput{
-		Family:       "TestVirus",
-		Kind:         KindFileSHA256,
-		MalwareName:  "Test Virus",
-		SampleSHA256: hash,
-		SampleSize:   1234,
-		Format:       "amiga-hunk-executable",
-		SourceEngine: "aaa-native",
+		Family:        "TestVirus",
+		Kind:          KindFileSHA256,
+		MalwareName:   "Test Virus",
+		SampleSHA256:  hash,
+		SampleSize:    1234,
+		Format:        "amiga-hunk-executable",
+		SourceEngine:  "aaa-native",
 		DetectionName: "synthetic-test-detection",
-		Confidence:   ConfidenceConfirmed,
-		CreatedAt:    created,
+		Confidence:    ConfidenceConfirmed,
+		CreatedAt:     created,
 	})
 	if err != nil {
 		t.Fatal(err)
