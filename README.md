@@ -29,7 +29,9 @@ aaa version
 - **M6.0** — bounded ADZ/gzip expansion plus scanner integration into the existing ADF → filesystem → file hash → Hunk pipeline: implemented and CI-qualified.
 - **M6.1a** — bounded ZIP member extraction, SHA-256, and content-aware member format classification: implemented and CI-qualified.
 - **M6.1b** — bounded LHA/LZH extraction plus full native per-member ADF/Hunk scanning for ZIP and LHA: implemented and CI-qualified.
-- **M6.2** — DMS decoding through a bounded xDMS subprocess and full ADF pipeline integration: implemented; CI and reference-appliance runtime qualification pending.
+- **M6.2** — DMS decoding through a bounded xDMS subprocess and full ADF pipeline integration: implemented and CI-qualified; reference-appliance runtime qualification pending.
+- **M6.3** — Amiga LZX plus bounded nested ZIP/LHA/LZX/ADZ/DMS scanning under shared per-job budgets: implemented and CI-qualified; real-fixture/reference-appliance qualification pending.
+- **M6.4** — preservation disk-image formats: IPF and FDI architecture/specification started; decoder/parser implementation pending.
 
 M3 can declare an ADF `infected` when its bootblock exactly matches a known-malicious entry. A known-clean bootblock does not make the whole disk clean, because complete malware inspection of reconstructed files is not implemented yet.
 
@@ -56,18 +58,21 @@ go build -o aaa ./cmd/aaa
 ./aaa scan disk.dms
 ./aaa scan bundle.zip
 ./aaa scan archive.lha
+./aaa scan archive.lzx
 ./aaa scan --json archive.lha
 ```
 
-For classic DD/HD ADF images, AAA reports geometry, DOS type/filesystem, boot-code presence, exact bootblock SHA-256, stored/calculated Amiga bootblock checksum, checksum validity, root-block pointer, database match status, OFS/FFS filesystem objects, per-file payload hashes, and Hunk metadata for recognized executables.
+For classic DD/HD ADF images, AAA reports geometry, DOS type/filesystem when recognized, boot-code presence, exact bootblock SHA-256, stored/calculated Amiga bootblock checksum, checksum validity, root-block pointer, database match status, OFS/FFS filesystem objects when available, per-file payload hashes, and Hunk metadata for recognized executables.
 
 M6.0 adds ADZ handling. AAA expands the gzip stream only in memory, enforces a 32 MiB hard limit, records the expanded member hash, validates that the result is a supported raw ADF, and then applies the same ADF scanner pipeline. Invalid or non-ADF ADZ payloads fail closed.
 
 M6.1 adds ZIP and LHA/LZH archive handling. ZIP/LHA archives are limited to 1024 members and 32 MiB aggregate expanded data. Member names are never used as host extraction paths. Each regular member receives SHA-256 and content-aware format classification. ADF members are passed through bootblock analysis, OFS/FFS traversal, reconstructed file hashing, and Hunk detection; standalone Hunk members receive structural Hunk analysis. An infected member propagates the infected verdict to the outer archive while retaining the member identity.
 
-M6.2 adds DMS support through the reference `xdms` utility. AAA sends the DMS stream to `xdms -q u stdin +stdout`, caps decoder output at 32 MiB, applies a 15-second timeout, and feeds the resulting ADF bytes into the same native scanner chain. No temporary DMS or ADF path is created. The DietPi appliance installer installs Debian's `xdms` package. xDMS is distributed as public-domain software.
+M6.2 adds DMS support through the reference `xdms` utility. AAA sends the DMS stream to `xdms -q u stdin +stdout`, applies a bounded output budget and 15-second timeout, and feeds the resulting ADF bytes into the same native scanner chain. Nested DMS uses the remaining shared archive expansion budget before output is accepted. No temporary DMS or ADF path is created.
 
-Nested archive expansion is deliberately deferred until M6.3 so explicit recursion and aggregate resource limits can be enforced first.
+M6.3 adds Amiga LZX through Debian `unar`/`lsar` and enables bounded nested-container scanning. Nested ZIP, LHA, LZX, ADZ and DMS share the same 32 MiB expanded-data budget and 1024-member ceiling rather than receiving fresh budgets at each level.
+
+M6.4 extends scanning to preservation formats such as IPF and FDI. The original preservation image remains the primary evidence object; any ADF-compatible sector view is explicitly treated as derived scan evidence. IPF uses an optional separately licensed CAPSImage-compatible decoder boundary rather than bundling CAPS/SPS code into AAA's MIT core. See `docs/M6_4_SPEC.md`.
 
 Example fields:
 
@@ -84,7 +89,7 @@ Verdict:  unknown
 
 M4 enumerates file and directory names, paths, and header-block numbers. M4.1 reconstructs OFS/FFS file byte streams transiently and records exact SHA-256 without writing extracted files to the host filesystem. M5 recognizes `HUNK_HEADER` load files and summarizes CODE, DATA, BSS, relocation and structural records without loading or executing them.
 
-See `docs/M1_SPEC.md`, `docs/M2_SPEC.md`, `docs/M3_SPEC.md`, `docs/M3_1_SPEC.md`, `docs/M4_SPEC.md`, `docs/M4_1_SPEC.md`, `docs/M5_SPEC.md`, and `docs/M6_SPEC.md` for the exact contracts.
+See `docs/M1_SPEC.md`, `docs/M2_SPEC.md`, `docs/M3_SPEC.md`, `docs/M3_1_SPEC.md`, `docs/M4_SPEC.md`, `docs/M4_1_SPEC.md`, `docs/M5_SPEC.md`, `docs/M6_SPEC.md`, and `docs/M6_4_SPEC.md` for the exact contracts.
 
 ## Persistent appliance layout
 
@@ -122,7 +127,7 @@ make build
 make build-arm64
 ```
 
-The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/koron-go/lha` dependency for LHA/LZH decoding; dependency checksums are committed in `go.sum`. M6.2 uses xDMS as a separate runtime decoder rather than linking its code into AAA.
+The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/koron-go/lha` dependency for LHA/LZH decoding; dependency checksums are committed in `go.sum`. M6.2 uses xDMS as a separate runtime decoder rather than linking its code into AAA. M6.3 uses Debian `unar`/`lsar` as separate runtime tools for Amiga LZX.
 
 ## Roadmap
 
@@ -135,7 +140,8 @@ The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/
 - M4.1 OFS/FFS file payload reconstruction and per-file hashing
 - M5 Amiga Hunk analysis
 - M6 ADZ/DMS/LHA/LZX/archive pipeline
-- M7 Amiga malware signatures / historical scanner knowledge
+- M6.4 IPF/FDI preservation-image support
+- M7 Signature Factory and Amiga malware signatures / historical scanner knowledge
 - M8 isolated emulated Amiga scanner engines and consensus
 - M9 daemon, REST API, scan history
 - M10 Web UI
@@ -146,4 +152,4 @@ The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/
 
 AAA is licensed under the MIT License. See `LICENSE`.
 
-Third-party components and historical scanner engines retain their own licenses. The MIT license for AAA does not relicense external GPL or proprietary components.
+Third-party components and historical scanner engines retain their own licenses. The MIT license for AAA does not relicense external GPL, non-commercial, or proprietary components.
