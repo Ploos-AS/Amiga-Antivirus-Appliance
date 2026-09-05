@@ -21,10 +21,11 @@ const (
 )
 
 type FilesystemEntry struct {
-	Path        string `json:"path"`
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	HeaderBlock uint32 `json:"header_block"`
+	Path        string               `json:"path"`
+	Name        string               `json:"name"`
+	Type        string               `json:"type"`
+	HeaderBlock uint32               `json:"header_block"`
+	Payload     *FilePayloadAnalysis `json:"payload,omitempty"`
 }
 
 type FilesystemAnalysis struct {
@@ -36,9 +37,10 @@ type FilesystemAnalysis struct {
 	Warnings       []string          `json:"warnings,omitempty"`
 }
 
-// AnalyzeFilesystem enumerates OFS/FFS directory and file header blocks without
-// extracting file payloads. Corrupt metadata is reported as warnings so the
-// preservation scanner can still report the disk rather than silently dropping it.
+// AnalyzeFilesystem enumerates OFS/FFS directory and file header blocks and,
+// for files, reconstructs payload bytes far enough to report size and SHA-256.
+// Corrupt metadata is reported as warnings so the preservation scanner can
+// still report the disk rather than silently dropping it.
 func AnalyzeFilesystem(pathname string) (*FilesystemAnalysis, error) {
 	image, err := os.ReadFile(pathname)
 	if err != nil {
@@ -56,6 +58,7 @@ func AnalyzeFilesystemBytes(image []byte) (*FilesystemAnalysis, error) {
 		return nil, fmt.Errorf("not a recognized AmigaDOS ADF")
 	}
 
+	dosType := image[3]
 	root := binary.BigEndian.Uint32(image[8:12])
 	if root == 0 {
 		root = expectedRoot
@@ -74,11 +77,11 @@ func AnalyzeFilesystemBytes(image []byte) (*FilesystemAnalysis, error) {
 	result.RootBlockValid = true
 
 	visited := map[uint32]bool{root: true}
-	walkDirectory(image, rootBlock, "", 0, visited, result)
+	walkDirectory(image, rootBlock, "", 0, dosType, visited, result)
 	return result, nil
 }
 
-func walkDirectory(image, dirBlock []byte, parent string, depth int, visited map[uint32]bool, result *FilesystemAnalysis) {
+func walkDirectory(image, dirBlock []byte, parent string, depth int, dosType uint8, visited map[uint32]bool, result *FilesystemAnalysis) {
 	if depth > maxTraversalDepth {
 		result.Warnings = append(result.Warnings, "directory traversal depth limit reached")
 		return
@@ -121,8 +124,12 @@ func walkDirectory(image, dirBlock []byte, parent string, depth int, visited map
 			secondary := int32(be32(entryBlock, secondaryTypeWord))
 			switch secondary {
 			case secondaryFile:
-				result.Entries = append(result.Entries, FilesystemEntry{Path: entryPath, Name: name, Type: "file", HeaderBlock: current})
+				payload := analyzeFilePayload(image, current, dosType)
+				result.Entries = append(result.Entries, FilesystemEntry{Path: entryPath, Name: name, Type: "file", HeaderBlock: current, Payload: &payload})
 				result.FileCount++
+				if payload.Warning != "" {
+					result.Warnings = append(result.Warnings, fmt.Sprintf("file %s: %s", entryPath, payload.Warning))
+				}
 			case secondaryDirectory:
 				result.Entries = append(result.Entries, FilesystemEntry{Path: entryPath, Name: name, Type: "directory", HeaderBlock: current})
 				result.DirectoryCount++
@@ -130,7 +137,7 @@ func walkDirectory(image, dirBlock []byte, parent string, depth int, visited map
 					result.Warnings = append(result.Warnings, fmt.Sprintf("directory loop at block %d", current))
 				} else {
 					visited[current] = true
-					walkDirectory(image, entryBlock, entryPath, depth+1, visited, result)
+					walkDirectory(image, entryBlock, entryPath, depth+1, dosType, visited, result)
 				}
 			default:
 				result.Warnings = append(result.Warnings, fmt.Sprintf("block %d has unsupported secondary type %d", current, secondary))
