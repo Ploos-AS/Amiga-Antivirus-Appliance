@@ -1,7 +1,6 @@
 package signaturefactory
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +15,7 @@ if [ "$1" = "--version" ]; then
   echo "ClamAV 1.4.2/27777/Fri Sep  5 00:00:00 2026"
   exit 0
 fi
-echo "$5: Win.Test.EICAR_HDB-1 FOUND"
+echo "$4: Win.Test.EICAR_HDB-1 FOUND"
 exit 1
 `)
 
@@ -48,7 +47,7 @@ if [ "$1" = "--version" ]; then
   echo "ClamAV 1.4.2/27777/Fri Sep  5 00:00:00 2026"
   exit 0
 fi
-echo "$5: OK"
+echo "$4: OK"
 exit 0
 `)
 
@@ -89,7 +88,7 @@ if [ "$1" = "--version" ]; then
   exit 0
 fi
 sleep 1
-echo "$5: OK"
+echo "$4: OK"
 `)
 
 	_, err := runClamAVWithExecutable(target, executable, 50*time.Millisecond)
@@ -142,8 +141,5 @@ func TestClamAVCappedBuffer(t *testing.T) {
 	}
 	if !buffer.exceeded {
 		t.Fatal("expected exceeded flag")
-	}
-	if !errors.Is(errors.New("x"), nil) {
-		// keep the errors import exercised without coupling the test to messages
 	}
 }
