@@ -11,17 +11,19 @@ import (
 	"strings"
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/adf"
+	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/signatures"
 )
 
 type Result struct {
-	Path      string        `json:"path"`
-	Name      string        `json:"name"`
-	Size      int64         `json:"size"`
-	SHA256    string        `json:"sha256"`
-	Format    string        `json:"format"`
-	Verdict   string        `json:"verdict"`
-	Detection string        `json:"detection,omitempty"`
-	ADF       *adf.Analysis `json:"adf,omitempty"`
+	Path           string            `json:"path"`
+	Name           string            `json:"name"`
+	Size           int64             `json:"size"`
+	SHA256         string            `json:"sha256"`
+	Format         string            `json:"format"`
+	Verdict        string            `json:"verdict"`
+	Detection      string            `json:"detection,omitempty"`
+	ADF            *adf.Analysis     `json:"adf,omitempty"`
+	BootblockMatch *signatures.Match `json:"bootblock_match,omitempty"`
 }
 
 func ScanFile(path string) (Result, error) {
@@ -70,6 +72,17 @@ func ScanFile(path string) (Result, error) {
 			return Result{}, fmt.Errorf("analyze ADF: %w", err)
 		}
 		result.ADF = analysis
+
+		db, err := signatures.LoadBundled()
+		if err != nil {
+			return Result{}, fmt.Errorf("load bootblock signatures: %w", err)
+		}
+		match := db.Lookup(analysis.BootblockSHA256)
+		result.BootblockMatch = match
+		if match != nil && match.Status == signatures.StatusKnownMalicious {
+			result.Verdict = "infected"
+			result.Detection = "bootblock:" + match.Name
+		}
 	}
 
 	return result, nil
