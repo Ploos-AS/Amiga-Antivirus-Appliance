@@ -47,7 +47,7 @@ func RecordClamAVResult(store *Store, scan scanner.Result, clam ClamAVScanResult
 	if err != nil {
 		return Candidate{}, false, fmt.Errorf("build ClamAV candidate: %w", err)
 	}
-	if err := store.WriteCandidate(candidate); err != nil {
+	if _, err := store.WriteCandidate(candidate); err != nil {
 		if existing, readErr := store.ReadCandidate(candidate.ID); readErr == nil && existing.ID == candidate.ID {
 			return existing, false, nil
 		}
