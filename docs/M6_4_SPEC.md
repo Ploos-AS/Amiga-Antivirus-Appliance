@@ -11,6 +11,15 @@ M6.4 starts with two formats:
 
 Support is preservation-first: AAA never rewrites, normalizes, repairs, or converts the submitted original in place.
 
+## Status
+
+Both initial preservation paths are now code-qualified:
+
+- M6.4a IPF: bounded optional helper adapter, candidate identification, preservation provenance, derived-sector hashing, native ADF scanner integration, deterministic fake-helper tests, and fail-closed error handling are implemented and CI-qualified.
+- M6.4b FDI: equivalent bounded helper adapter and scanner integration are implemented and CI-qualified.
+
+The code qualification does **not** claim end-to-end runtime support for arbitrary real IPF or FDI media. Real provenance-safe fixtures, a compatible real decoder/parser, and Orange Pi Zero 3/DietPi runtime qualification remain required. In particular, AAA does not bundle CAPS/SPS decoder code.
+
 ## Why this belongs in AAA
 
 Commercial Amiga software and some protected disks use track layouts, weak data, non-standard sectors, or other low-level structures that a normal ADF cannot preserve. Antivirus inspection must therefore be able to consume preservation images without pretending that conversion to a normal ADF is always lossless.
@@ -33,17 +42,17 @@ The submitted IPF/FDI image remains the primary evidence object and retains its 
 
 IPF decoding requires the CAPS/SPS decoder model because IPF preserves track-level information that cannot be parsed safely by treating the file as a normal block image.
 
-AAA will use an adapter boundary rather than link CAPS code into the MIT-licensed Go core. The adapter must support Linux/arm64 because Orange Pi Zero 3 is the reference appliance.
+AAA uses an adapter boundary rather than link CAPS code into the MIT-licensed Go core. The adapter is designed for Linux/arm64 because Orange Pi Zero 3 is the reference appliance.
 
-The preferred implementation is a small bounded helper process that uses a user-installed CAPSImage-compatible decoder library. The helper is optional and separately licensed. AAA itself will not vendor or silently download the CAPS/SPS library.
+The implementation uses a bounded helper process selected with `AAA_IPF_HELPER`. The helper is optional and separately installed/licensed. AAA itself does not vendor or silently download the CAPS/SPS library.
 
 The adapter contract is:
 
 `IPF → bounded CAPS decoder helper → Amiga track/sector view → native AAA analysis`
 
-For standard readable AmigaDOS sectors, AAA may construct a transient sector image and pass it to the existing ADF/filesystem/bootblock pipeline. The report must mark that image as derived from IPF and record its SHA-256 separately.
+The helper must positively confirm `format: "ipf"`. Its metadata and stderr are bounded, execution has a timeout, and any derived sector image is bounded and hashed by AAA. A lossless derived sector view is passed to the existing ADF/filesystem/bootblock pipeline while the original IPF hash remains the primary evidence identity.
 
-For tracks that cannot be reduced losslessly to normal AmigaDOS sectors, AAA must still retain/report low-level track metadata and return an explicit partial/unsupported analysis state rather than declaring the disk clean.
+For tracks that cannot be reduced losslessly to normal AmigaDOS sectors, AAA must retain/report the preservation metadata and must not infer a clean verdict from an absent sector view.
 
 ### IPF dependency policy
 
@@ -51,23 +60,24 @@ CAPS/SPS decoder implementations use licensing terms separate from AAA's MIT lic
 
 ## M6.4b — FDI
 
-FDI is a documented low-level floppy-image format. AAA will prefer an independently auditable parser/adapter whose license permits redistribution with the appliance. If the selected implementation is not suitable for direct inclusion, FDI will use the same bounded external-helper pattern as IPF.
+FDI uses the same preservation-first helper boundary, selected with `AAA_FDI_HELPER`. The helper must positively confirm `format: "fdi"`; output, metadata, stderr and processing time are bounded, and any derived lossless sector image is hashed independently before native ADF analysis.
 
 The FDI path is:
 
 `FDI → bounded parser/helper → Amiga track/sector view → native AAA analysis`
 
-As with IPF, any ADF-compatible sector image is a derived scan view, not a replacement for the original evidence.
+As with IPF, any ADF-compatible sector image is a derived scan view, not a replacement for the original evidence. A real redistributable FDI backend remains a runtime-integration decision; the current helper protocol deliberately keeps that dependency outside the core scanner.
 
 ## Result model
 
-M6.4 should add preservation-image metadata without overloading the existing ADF object. The expected shape is conceptually:
+M6.4 adds preservation-image metadata without overloading the existing ADF object. The implemented result shape follows this model:
 
 ```json
 {
   "format": "ipf",
   "sha256": "<original image sha256>",
   "preservation_image": {
+    "format": "ipf",
     "decoder": "...",
     "decoder_version": "...",
     "platform": "amiga",
@@ -82,7 +92,7 @@ M6.4 should add preservation-image metadata without overloading the existing ADF
 }
 ```
 
-Exact fields may evolve during implementation, but provenance between original and derived data is mandatory.
+Provenance between original and derived data is mandatory.
 
 ## Format identification
 
@@ -90,18 +100,30 @@ File suffixes `.ipf` and `.fdi` are candidates only. Identification by extension
 
 ## Qualification
 
-M6.4a is code-qualified when:
+M6.4a code qualification requires:
 
-- IPF candidate identification exists;
-- the adapter/helper boundary is covered by deterministic tests using a fake decoder;
-- output, timeout, and error paths are bounded;
-- a synthetic adapter result can feed a valid derived ADF into the existing native scanner;
-- missing decoder and malformed decoder output fail closed;
-- gofmt, vet, tests, linux/amd64 build and linux/arm64 build pass.
+- IPF candidate identification;
+- deterministic adapter/helper tests using a fake decoder;
+- bounded output, timeout, and error paths;
+- a synthetic adapter result feeding a valid derived ADF into the existing native scanner;
+- missing decoder and malformed decoder output failing closed;
+- gofmt, vet, tests, linux/amd64 build and linux/arm64 build passing.
 
-Runtime qualification additionally requires a provenance-safe real Amiga IPF fixture and a CAPS-compatible decoder on the Orange Pi/DietPi reference appliance.
+These code gates are complete. CI #117 qualified the IPF scanner integration.
 
-M6.4b receives the equivalent qualification with a provenance-safe FDI fixture and the selected FDI parser/helper.
+M6.4b receives the equivalent qualification. These code gates are also complete. CI #121 qualified the FDI scanner integration.
+
+Runtime qualification remains open and requires:
+
+- a provenance-safe real Amiga IPF fixture plus a CAPS-compatible decoder;
+- a provenance-safe real Amiga FDI fixture plus the selected compatible parser/helper;
+- execution on the Orange Pi Zero 3/DietPi reference appliance;
+- verification that original and derived hashes/provenance remain distinct;
+- confirmation that unsupported/non-lossless preservation structures never become a false clean result.
+
+## Exit state
+
+M6.4 is **code-qualified, runtime-pending**. Development can proceed to M7 without treating the outstanding hardware/real-fixture qualification as completed.
 
 ## Non-goals
 
