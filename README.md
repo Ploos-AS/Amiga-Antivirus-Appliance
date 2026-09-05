@@ -26,7 +26,8 @@ aaa version
 - **M4** — OFS/FFS metadata traversal: implemented and CI-qualified.
 - **M4.1** — OFS/FFS file payload reconstruction and per-file SHA-256: implemented and CI-qualified as part of the M5 qualification chain.
 - **M5** — structural Amiga Hunk analysis for standalone files and reconstructed ADF files: implemented and CI-qualified.
-- **M6.0** — bounded ADZ/gzip expansion plus scanner integration into the existing ADF → filesystem → file hash → Hunk pipeline: implemented; CI qualification pending on the current HEAD.
+- **M6.0** — bounded ADZ/gzip expansion plus scanner integration into the existing ADF → filesystem → file hash → Hunk pipeline: implemented and CI-qualified.
+- **M6.1a** — bounded ZIP member extraction, SHA-256, and content-aware member format classification: implemented; CI qualification pending on the current HEAD.
 
 M3 can declare an ADF `infected` when its bootblock exactly matches a known-malicious entry. A known-clean bootblock does not make the whole disk clean, because complete malware inspection of reconstructed files is not implemented yet.
 
@@ -50,32 +51,29 @@ See `docs/EMULATED_SCANNERS.md` for the architecture contract.
 go build -o aaa ./cmd/aaa
 ./aaa scan disk.adf
 ./aaa scan disk.adz
-./aaa scan --json disk.adz
+./aaa scan bundle.zip
+./aaa scan --json bundle.zip
 ```
 
 For classic DD/HD ADF images, AAA reports geometry, DOS type/filesystem, boot-code presence, exact bootblock SHA-256, stored/calculated Amiga bootblock checksum, checksum validity, root-block pointer, database match status, OFS/FFS filesystem objects, per-file payload hashes, and Hunk metadata for recognized executables.
 
 M6.0 adds ADZ handling. AAA expands the gzip stream only in memory, enforces a 32 MiB hard limit, records the expanded member hash, validates that the result is a supported raw ADF, and then applies the same ADF scanner pipeline. Invalid or non-ADF ADZ payloads fail closed.
 
+M6.1a adds ZIP member enumeration and bounded in-memory extraction. ZIP archives are limited to 1024 entries and 32 MiB aggregate expanded data; encrypted members are rejected. Member names are never used as host extraction paths. Each regular member receives SHA-256 and AAA format classification.
+
 Example fields:
 
 ```text
-Format:   adz
-Archive:  adz expanded=901120 bytes
+Format:   zip
+Archive:  zip expanded=901120 bytes
   member    disk.adf [901120 bytes, adf]
             SHA-256 ...
-Disk:     dd (1760 blocks)
-DOS type: DOS\1 (FFS)
-Boot SHA: ...
-Checksum: stored=... calculated=... valid=true
-FS items: 12 files, 3 directories, 4 Hunk files
-Boot DB:  unknown
 Verdict:  unknown
 ```
 
 M4 enumerates file and directory names, paths, and header-block numbers. M4.1 reconstructs OFS/FFS file byte streams transiently and records exact SHA-256 without writing extracted files to the host filesystem. M5 recognizes `HUNK_HEADER` load files and summarizes CODE, DATA, BSS, relocation and structural records without loading or executing them.
 
-M1 format identification also recognizes DMS, LHA/LZH and ZIP where content signatures are available. Identification alone does not mean those formats are fully decoded yet.
+M1 format identification also recognizes DMS and LHA/LZH where content signatures are available. Identification alone does not mean those formats are fully decoded yet.
 
 See `docs/M1_SPEC.md`, `docs/M2_SPEC.md`, `docs/M3_SPEC.md`, `docs/M3_1_SPEC.md`, `docs/M4_SPEC.md`, `docs/M4_1_SPEC.md`, `docs/M5_SPEC.md`, and `docs/M6_SPEC.md` for the exact contracts.
 
@@ -135,4 +133,6 @@ The current implementation uses only the Go standard library.
 
 ## License
 
-No project license has been selected yet. Third-party components retain their own licenses.
+AAA is licensed under the MIT License. See `LICENSE`.
+
+Third-party components and historical scanner engines retain their own licenses. The MIT license for AAA does not relicense external GPL or proprietary components.
