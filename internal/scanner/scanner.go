@@ -15,15 +15,16 @@ import (
 )
 
 type Result struct {
-	Path           string            `json:"path"`
-	Name           string            `json:"name"`
-	Size           int64             `json:"size"`
-	SHA256         string            `json:"sha256"`
-	Format         string            `json:"format"`
-	Verdict        string            `json:"verdict"`
-	Detection      string            `json:"detection,omitempty"`
-	ADF            *adf.Analysis     `json:"adf,omitempty"`
-	BootblockMatch *signatures.Match `json:"bootblock_match,omitempty"`
+	Path           string                  `json:"path"`
+	Name           string                  `json:"name"`
+	Size           int64                   `json:"size"`
+	SHA256         string                  `json:"sha256"`
+	Format         string                  `json:"format"`
+	Verdict        string                  `json:"verdict"`
+	Detection      string                  `json:"detection,omitempty"`
+	ADF            *adf.Analysis           `json:"adf,omitempty"`
+	Filesystem     *adf.FilesystemAnalysis `json:"filesystem,omitempty"`
+	BootblockMatch *signatures.Match       `json:"bootblock_match,omitempty"`
 }
 
 func ScanFile(path string) (Result, error) {
@@ -72,6 +73,12 @@ func ScanFile(path string) (Result, error) {
 			return Result{}, fmt.Errorf("analyze ADF: %w", err)
 		}
 		result.ADF = analysis
+
+		filesystem, err := adf.AnalyzeFilesystem(path)
+		if err != nil {
+			return Result{}, fmt.Errorf("analyze ADF filesystem: %w", err)
+		}
+		result.Filesystem = filesystem
 
 		db, err := signatures.LoadBundled()
 		if err != nil {
