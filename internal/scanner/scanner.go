@@ -17,6 +17,8 @@ import (
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/signatures"
 )
 
+const MaxArchiveDepth = 2
+
 type MemberResult struct {
 	Name           string                  `json:"name"`
 	Size           int64                   `json:"size"`
@@ -25,6 +27,8 @@ type MemberResult struct {
 	Verdict        string                  `json:"verdict"`
 	Detection      string                  `json:"detection,omitempty"`
 	Error          string                  `json:"error,omitempty"`
+	Archive        *archivepkg.Analysis    `json:"archive,omitempty"`
+	Children       []MemberResult          `json:"children,omitempty"`
 	ADF            *adf.Analysis           `json:"adf,omitempty"`
 	Filesystem     *adf.FilesystemAnalysis `json:"filesystem,omitempty"`
 	Hunk           *hunk.Analysis          `json:"hunk,omitempty"`
@@ -45,6 +49,10 @@ type Result struct {
 	Filesystem     *adf.FilesystemAnalysis `json:"filesystem,omitempty"`
 	Hunk           *hunk.Analysis          `json:"hunk,omitempty"`
 	BootblockMatch *signatures.Match       `json:"bootblock_match,omitempty"`
+}
+
+type archiveBudget struct {
+	expanded int64
 }
 
 func ScanFile(path string) (Result, error) {
@@ -123,18 +131,13 @@ func ScanFile(path string) (Result, error) {
 		if err != nil {
 			return Result{}, fmt.Errorf("read %s: %w", format, err)
 		}
-		var members []archivepkg.ExpandedMember
-		var archiveAnalysis *archivepkg.Analysis
-		if format == "zip" {
-			members, archiveAnalysis, err = archivepkg.DecodeZIP(data)
-		} else {
-			members, archiveAnalysis, err = archivepkg.DecodeLHA(data)
-		}
+		members, archiveAnalysis, err := decodeArchive(format, data)
 		if err != nil {
 			return Result{}, fmt.Errorf("decode %s: %w", format, err)
 		}
 		result.Archive = archiveAnalysis
-		result.MemberResults = scanArchiveMembers(archiveAnalysis, members)
+		budget := &archiveBudget{expanded: archiveAnalysis.ExpandedSize}
+		result.MemberResults = scanArchiveMembersDepth(archiveAnalysis, members, 1, budget)
 		propagateMemberVerdict(&result)
 	case "amiga-hunk-executable":
 		data, err := os.ReadFile(path)
@@ -147,7 +150,18 @@ func ScanFile(path string) (Result, error) {
 	return result, nil
 }
 
-func scanArchiveMembers(analysis *archivepkg.Analysis, members []archivepkg.ExpandedMember) []MemberResult {
+func decodeArchive(format string, data []byte) ([]archivepkg.ExpandedMember, *archivepkg.Analysis, error) {
+	switch format {
+	case "zip":
+		return archivepkg.DecodeZIP(data)
+	case "lha":
+		return archivepkg.DecodeLHA(data)
+	default:
+		return nil, nil, fmt.Errorf("unsupported archive format: %s", format)
+	}
+}
+
+func scanArchiveMembersDepth(analysis *archivepkg.Analysis, members []archivepkg.ExpandedMember, depth int, budget *archiveBudget) []MemberResult {
 	if analysis == nil {
 		return nil
 	}
@@ -170,24 +184,95 @@ func scanArchiveMembers(analysis *archivepkg.Analysis, members []archivepkg.Expa
 			Format:  format,
 			Verdict: "unknown",
 		}
-		switch format {
-		case "adf":
-			tmp := Result{Verdict: "unknown"}
-			if err := analyzeADFBytes(&tmp, member.Data); err != nil {
-				memberResult.Error = err.Error()
-				break
-			}
-			memberResult.ADF = tmp.ADF
-			memberResult.Filesystem = tmp.Filesystem
-			memberResult.BootblockMatch = tmp.BootblockMatch
-			memberResult.Verdict = tmp.Verdict
-			memberResult.Detection = tmp.Detection
-		case "amiga-hunk-executable":
-			memberResult.Hunk = hunk.Analyze(member.Data)
-		}
+		scanMemberPayload(&memberResult, member.Data, depth, budget)
 		results = append(results, memberResult)
 	}
 	return results
+}
+
+func scanMemberPayload(memberResult *MemberResult, data []byte, depth int, budget *archiveBudget) {
+	if memberResult == nil {
+		return
+	}
+	switch memberResult.Format {
+	case "adf":
+		tmp := Result{Verdict: "unknown"}
+		if err := analyzeADFBytes(&tmp, data); err != nil {
+			memberResult.Error = err.Error()
+			return
+		}
+		copyADFResult(memberResult, &tmp)
+	case "amiga-hunk-executable":
+		memberResult.Hunk = hunk.Analyze(data)
+	case "adz":
+		expanded, archiveAnalysis, err := archivepkg.DecodeADZ(data)
+		if err != nil {
+			memberResult.Error = err.Error()
+			return
+		}
+		if !reserveArchiveBudget(budget, archiveAnalysis.ExpandedSize) {
+			memberResult.Error = fmt.Sprintf("nested archive expansion exceeds %d-byte global safety limit", archivepkg.MaxExpandedSize)
+			return
+		}
+		memberResult.Archive = archiveAnalysis
+		tmp := Result{Verdict: "unknown"}
+		if err := analyzeADFBytes(&tmp, expanded); err != nil {
+			memberResult.Error = err.Error()
+			return
+		}
+		copyADFResult(memberResult, &tmp)
+	case "zip", "lha":
+		if depth >= MaxArchiveDepth {
+			memberResult.Error = fmt.Sprintf("nested archive depth exceeds limit %d", MaxArchiveDepth)
+			return
+		}
+		members, archiveAnalysis, err := decodeArchive(memberResult.Format, data)
+		if err != nil {
+			memberResult.Error = err.Error()
+			return
+		}
+		if !reserveArchiveBudget(budget, archiveAnalysis.ExpandedSize) {
+			memberResult.Error = fmt.Sprintf("nested archive expansion exceeds %d-byte global safety limit", archivepkg.MaxExpandedSize)
+			return
+		}
+		memberResult.Archive = archiveAnalysis
+		memberResult.Children = scanArchiveMembersDepth(archiveAnalysis, members, depth+1, budget)
+		propagateChildVerdict(memberResult)
+	case "dms":
+		memberResult.Error = "nested DMS decoding is disabled pending per-job xDMS resource accounting"
+	}
+}
+
+func reserveArchiveBudget(budget *archiveBudget, n int64) bool {
+	if budget == nil || n < 0 {
+		return false
+	}
+	if n > archivepkg.MaxExpandedSize-budget.expanded {
+		return false
+	}
+	budget.expanded += n
+	return true
+}
+
+func copyADFResult(memberResult *MemberResult, tmp *Result) {
+	memberResult.ADF = tmp.ADF
+	memberResult.Filesystem = tmp.Filesystem
+	memberResult.BootblockMatch = tmp.BootblockMatch
+	memberResult.Verdict = tmp.Verdict
+	memberResult.Detection = tmp.Detection
+}
+
+func propagateChildVerdict(member *MemberResult) {
+	if member == nil {
+		return
+	}
+	for _, child := range member.Children {
+		if child.Verdict == "infected" {
+			member.Verdict = "infected"
+			member.Detection = "archive-member:" + child.Name + ":" + child.Detection
+			return
+		}
+	}
 }
 
 func propagateMemberVerdict(result *Result) {
