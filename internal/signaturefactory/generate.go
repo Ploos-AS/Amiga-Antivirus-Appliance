@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/adf"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanner"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/signatures"
 )
@@ -79,21 +80,13 @@ func candidatesFromMember(member scanner.MemberResult, createdAt time.Time) ([]C
 	return candidates, nil
 }
 
-func candidateFromScanNode(sampleSHA string, sampleSize int64, format, verdict, detection string, adfAnalysis interface{ GetBootblockSHA256() string }, match *signatures.Match, createdAt time.Time) (Candidate, bool, error) {
-	_ = adfAnalysis
+func candidateFromScanNode(sampleSHA string, sampleSize int64, format, verdict, detection string, adfAnalysis *adf.Analysis, match *signatures.Match, createdAt time.Time) (Candidate, bool, error) {
 	if verdict != "infected" {
 		return Candidate{}, false, nil
 	}
 
 	if match != nil && match.Status == signatures.StatusKnownMalicious {
-		bootSHA := ""
-		// scanner ADF analysis is concrete, but keep the extraction local to avoid
-		// making signature generation depend on any disk-image bytes.
-		switch value := any(adfAnalysis).(type) {
-		case interface{ BootblockHash() string }:
-			bootSHA = value.BootblockHash()
-		}
-		if bootSHA == "" {
+		if adfAnalysis == nil || adfAnalysis.BootblockSHA256 == "" {
 			return Candidate{}, false, fmt.Errorf("infected bootblock match missing bootblock sha256")
 		}
 		family := normalizedFamily(match.Family, match.Name)
@@ -102,7 +95,7 @@ func candidateFromScanNode(sampleSHA string, sampleSize int64, format, verdict, 
 			Kind:            KindBootblockSHA256,
 			MalwareName:     match.Name,
 			SampleSHA256:    sampleSHA,
-			BootblockSHA256: bootSHA,
+			BootblockSHA256: adfAnalysis.BootblockSHA256,
 			SampleSize:      sampleSize,
 			Format:          format,
 			SourceEngine:    "aaa-native",
@@ -150,11 +143,14 @@ func normalizedFamily(family, fallback string) string {
 func sanitizeFamily(value string) string {
 	value = strings.TrimSpace(value)
 	var b strings.Builder
+	lastSeparator := false
 	for _, r := range value {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
 			b.WriteRune(r)
-		} else if b.Len() > 0 && b.String()[b.Len()-1] != '-' {
+			lastSeparator = r == '.' || r == '_' || r == '-'
+		} else if b.Len() > 0 && !lastSeparator {
 			b.WriteByte('-')
+			lastSeparator = true
 		}
 		if b.Len() >= 64 {
 			break
