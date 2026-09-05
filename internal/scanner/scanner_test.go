@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
@@ -133,6 +134,36 @@ func TestScanADZRejectsNonADFExpansion(t *testing.T) {
 	}
 	if _, err := ScanFile(path); err == nil {
 		t.Fatal("expected non-ADF ADZ payload to fail")
+	}
+}
+
+func TestScanZIPEnumeratesAndClassifiesMembers(t *testing.T) {
+	var compressed bytes.Buffer
+	zw := zip.NewWriter(&compressed)
+	w, err := zw.Create("disk.adf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(testADFImage()); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "bundle.zip")
+	if err := os.WriteFile(path, compressed.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ScanFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Format != "zip" || got.Archive == nil || len(got.Archive.Members) != 1 {
+		t.Fatalf("missing ZIP analysis: %+v", got)
+	}
+	if got.Archive.Members[0].Name != "disk.adf" || got.Archive.Members[0].Format != "adf" || len(got.Archive.Members[0].SHA256) != 64 {
+		t.Fatalf("unexpected ZIP member: %+v", got.Archive.Members[0])
 	}
 }
 
