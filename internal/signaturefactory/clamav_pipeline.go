@@ -1,7 +1,10 @@
 package signaturefactory
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -47,11 +50,46 @@ func RecordClamAVResult(store *Store, scan scanner.Result, clam ClamAVScanResult
 	if err != nil {
 		return Candidate{}, false, fmt.Errorf("build ClamAV candidate: %w", err)
 	}
-	if _, err := store.WriteCandidate(candidate); err != nil {
-		if existing, readErr := store.ReadCandidate(candidate.ID); readErr == nil && existing.ID == candidate.ID {
+
+	if existing, err := store.ReadCandidate(candidate.ID); err == nil {
+		equal, compareErr := candidatesEqual(existing, candidate)
+		if compareErr != nil {
+			return Candidate{}, false, compareErr
+		}
+		if equal {
 			return existing, false, nil
+		}
+		return Candidate{}, false, ErrCandidateConflict
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Candidate{}, false, err
+	}
+
+	if _, err := store.WriteCandidate(candidate); err != nil {
+		if errors.Is(err, ErrCandidateConflict) {
+			existing, readErr := store.ReadCandidate(candidate.ID)
+			if readErr == nil {
+				equal, compareErr := candidatesEqual(existing, candidate)
+				if compareErr != nil {
+					return Candidate{}, false, compareErr
+				}
+				if equal {
+					return existing, false, nil
+				}
+			}
 		}
 		return Candidate{}, false, err
 	}
 	return candidate, true, nil
+}
+
+func candidatesEqual(left, right Candidate) (bool, error) {
+	leftEncoded, err := marshalCandidate(left)
+	if err != nil {
+		return false, err
+	}
+	rightEncoded, err := marshalCandidate(right)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(leftEncoded, rightEncoded), nil
 }
