@@ -24,7 +24,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  aaa scan [--json] [--clamav] <file>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures candidates [--json]\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures validate\n")
-	fmt.Fprintf(os.Stderr, "  aaa signatures promote <id>\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures promote [--validation <result.json>] <id>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures reject <id>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures export aaa\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures export clamav\n")
@@ -222,19 +222,16 @@ func signaturesCommand(args []string) {
 			os.Exit(1)
 		}
 		fmt.Println("signature candidates valid")
-	case "promote", "reject":
+	case "promote":
+		signaturePromoteCommand(store, args[1:])
+	case "reject":
 		if len(args) != 2 {
-			fmt.Fprintf(os.Stderr, "signatures %s requires exactly one candidate id\n", args[0])
+			fmt.Fprintln(os.Stderr, "signatures reject requires exactly one candidate id")
 			os.Exit(2)
 		}
-		var candidate signaturefactory.Candidate
-		if args[0] == "promote" {
-			candidate, err = store.Promote(args[1])
-		} else {
-			candidate, err = store.Reject(args[1])
-		}
+		candidate, err := store.Reject(args[1])
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "signature %s failed: %v\n", args[0], err)
+			fmt.Fprintf(os.Stderr, "signature reject failed: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Printf("%s %s\n", candidate.Status, candidate.ID)
