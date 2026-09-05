@@ -63,7 +63,25 @@ M7.1 includes a strict ClamAV normalization helper for attributable `clamscan` r
 
 The common `clamscan --version` form `ClamAV <engine>/<database>/<build-date>` is parsed into separate engine and database identities. Build dates are not used as source identity. The correlation key is `clamav-db:<database version>`, so multiple wrappers or ClamAV engine revisions using the same underlying database count once for independence calculations.
 
-Missing database identity fails closed instead of inventing provenance. Raw result text may be retained as a single-line evidence detail, but control/newline content is rejected. The helper does not execute ClamAV and does not change the native scan verdict by itself; execution/integration can be layered on top without duplicating provenance policy.
+Missing database identity fails closed instead of inventing provenance. Raw result text may be retained as a single-line evidence detail, but control/newline content is rejected.
+
+## Bounded ClamAV execution adapter
+
+M7.1 now also includes a bounded `clamscan` execution adapter. `RunClamAV` scans one already-existing regular host file and uses `AAA_CLAMSCAN` when configured, otherwise `clamscan` from `PATH`.
+
+The adapter:
+
+- validates that the target is a regular file before execution;
+- executes `clamscan --version` first and fails closed unless engine and signature database identity can be parsed;
+- executes a single-file scan with `--no-summary --stdout -- <path>` without invoking a shell;
+- applies a 5-second version-query timeout and a 30-second scan timeout;
+- caps stdout and stderr independently at 64 KiB;
+- accepts ClamAV exit code 0 only for a parsed `OK` result;
+- accepts exit code 1 only for exactly one parsed `FOUND` result;
+- rejects exit codes above 1, output/exit-code mismatches, multiple `FOUND` lines, missing result lines, timeouts and output-limit violations;
+- converts successful `FOUND` results immediately into the same normalized M7.1 evidence model and correlation policy used by the parser-only helper.
+
+A clean ClamAV result is returned as clean engine evidence state but does not create malware evidence. This slice intentionally does not yet merge the ClamAV verdict into AAA's top-level native scanner verdict or automatically create a Signature Factory candidate from a ClamAV-only detection; that integration remains explicit follow-up work.
 
 ## Historical engines
 
@@ -98,4 +116,14 @@ The ClamAV provenance slice additionally requires:
 - correlation by ClamAV database identity rather than frontend or engine revision;
 - synthetic-only tests covering positive, clean and fail-closed cases.
 
-Further M7.1 work will connect the normalized evidence helpers to executable engine adapters and later historical-engine results before M7.2 export work begins.
+The bounded execution slice additionally requires:
+
+- no shell interpolation of the target path;
+- regular-file validation;
+- bounded stdout/stderr;
+- bounded execution time;
+- explicit ClamAV exit-code semantics;
+- fail-closed result/output consistency checks;
+- synthetic fake-scanner tests for infected, clean, scanner-error and timeout behavior.
+
+Further M7.1 work will integrate ClamAV engine results with AAA's aggregate scan/candidate pipeline and later historical-engine results before M7.2 export work begins.
