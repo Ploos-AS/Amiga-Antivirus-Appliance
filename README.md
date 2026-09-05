@@ -31,7 +31,8 @@ aaa version
 - **M6.1b** — bounded LHA/LZH extraction plus full native per-member ADF/Hunk scanning for ZIP and LHA: implemented and CI-qualified.
 - **M6.2** — DMS decoding through a bounded xDMS subprocess and full ADF pipeline integration: implemented and CI-qualified; reference-appliance runtime qualification pending.
 - **M6.3** — Amiga LZX plus bounded nested ZIP/LHA/LZX/ADZ/DMS scanning under shared per-job budgets: implemented and CI-qualified; real-fixture/reference-appliance qualification pending.
-- **M6.4** — preservation disk-image formats: IPF and FDI architecture/specification started; decoder/parser implementation pending.
+- **M6.4a** — IPF preservation-image helper boundary plus scanner integration: implemented and CI-qualified with deterministic fake-helper coverage; real CAPS-compatible decoder/fixture and Orange Pi runtime qualification pending.
+- **M6.4b** — FDI preservation-image helper boundary plus scanner integration: implemented and CI-qualified with deterministic fake-helper coverage; real FDI parser/helper/fixture and Orange Pi runtime qualification pending.
 
 M3 can declare an ADF `infected` when its bootblock exactly matches a known-malicious entry. A known-clean bootblock does not make the whole disk clean, because complete malware inspection of reconstructed files is not implemented yet.
 
@@ -72,7 +73,7 @@ M6.2 adds DMS support through the reference `xdms` utility. AAA sends the DMS st
 
 M6.3 adds Amiga LZX through Debian `unar`/`lsar` and enables bounded nested-container scanning. Nested ZIP, LHA, LZX, ADZ and DMS share the same 32 MiB expanded-data budget and 1024-member ceiling rather than receiving fresh budgets at each level.
 
-M6.4 extends scanning to preservation formats such as IPF and FDI. The original preservation image remains the primary evidence object; any ADF-compatible sector view is explicitly treated as derived scan evidence. IPF uses an optional separately licensed CAPSImage-compatible decoder boundary rather than bundling CAPS/SPS code into AAA's MIT core. See `docs/M6_4_SPEC.md`.
+M6.4 extends scanning to preservation formats IPF and FDI through bounded optional helper boundaries. The original preservation image remains the primary evidence object and retains its own SHA-256; any lossless ADF-compatible sector view is explicitly recorded as derived evidence with a separate SHA-256 before entering the native ADF scanner pipeline. Both helper boundaries and scanner integrations are code-qualified in CI. Real decoder/parser fixtures and reference-appliance runtime qualification remain pending. IPF uses an optional separately licensed CAPSImage-compatible decoder boundary rather than bundling CAPS/SPS code into AAA's MIT core. See `docs/M6_4_SPEC.md`.
 
 Example fields:
 
@@ -127,7 +128,7 @@ make build
 make build-arm64
 ```
 
-The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/koron-go/lha` dependency for LHA/LZH decoding; dependency checksums are committed in `go.sum`. M6.2 uses xDMS as a separate runtime decoder rather than linking its code into AAA. M6.3 uses Debian `unar`/`lsar` as separate runtime tools for Amiga LZX.
+The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/koron-go/lha` dependency for LHA/LZH decoding; dependency checksums are committed in `go.sum`. M6.2 uses xDMS as a separate runtime decoder rather than linking its code into AAA. M6.3 uses Debian `unar`/`lsar` as separate runtime tools for Amiga LZX. M6.4 uses optional external helper boundaries for preservation formats; AAA does not bundle CAPS/SPS decoder code under its MIT license.
 
 ## Roadmap
 
@@ -140,7 +141,7 @@ The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/
 - M4.1 OFS/FFS file payload reconstruction and per-file hashing
 - M5 Amiga Hunk analysis
 - M6 ADZ/DMS/LHA/LZX/archive pipeline
-- M6.4 IPF/FDI preservation-image support
+- M6.4 IPF/FDI preservation-image support (code-qualified; real-fixture/appliance qualification pending)
 - M7 Signature Factory and Amiga malware signatures / historical scanner knowledge
 - M8 isolated emulated Amiga scanner engines and consensus
 - M9 daemon, REST API, scan history
