@@ -29,10 +29,8 @@ func RecordClamAVResult(store *Store, scan scanner.Result, clam ClamAVScanResult
 		return Candidate{}, false, fmt.Errorf("scan SHA-256 is required")
 	}
 
-	candidate := Candidate{
-		Schema:             SchemaVersion,
-		ID:                 CandidateID("ClamAV", scan.SHA256),
-		Status:             StatusCandidate,
+	candidate, err := NewExactCandidate(ExactCandidateInput{
+		Family:             normalizedFamily("", clam.DetectionName),
 		Kind:               KindFileSHA256,
 		MalwareName:        clam.DetectionName,
 		SampleSHA256:       scan.SHA256,
@@ -45,10 +43,9 @@ func RecordClamAVResult(store *Store, scan scanner.Result, clam ClamAVScanResult
 		Confidence:         ConfidenceSingleEngine,
 		Evidence:           []Evidence{*clam.Evidence},
 		CreatedAt:          createdAt.UTC(),
-		CreatedBy:          CreatedBy,
-	}
-	if err := candidate.Validate(); err != nil {
-		return Candidate{}, false, fmt.Errorf("validate ClamAV candidate: %w", err)
+	})
+	if err != nil {
+		return Candidate{}, false, fmt.Errorf("build ClamAV candidate: %w", err)
 	}
 	if err := store.WriteCandidate(candidate); err != nil {
 		if existing, readErr := store.ReadCandidate(candidate.ID); readErr == nil && existing.ID == candidate.ID {
