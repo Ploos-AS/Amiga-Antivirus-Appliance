@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/adf"
+	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/hunk"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/signatures"
 )
 
@@ -24,6 +25,7 @@ type Result struct {
 	Detection      string                  `json:"detection,omitempty"`
 	ADF            *adf.Analysis           `json:"adf,omitempty"`
 	Filesystem     *adf.FilesystemAnalysis `json:"filesystem,omitempty"`
+	Hunk           *hunk.Analysis          `json:"hunk,omitempty"`
 	BootblockMatch *signatures.Match       `json:"bootblock_match,omitempty"`
 }
 
@@ -87,6 +89,14 @@ func ScanFile(path string) (Result, error) {
 		applyBootblockDatabase(&result, db)
 	}
 
+	if format == "amiga-hunk-executable" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return Result{}, fmt.Errorf("read Hunk executable: %w", err)
+		}
+		result.Hunk = hunk.Analyze(data)
+	}
+
 	return result, nil
 }
 
@@ -124,7 +134,7 @@ func DetectFormat(path string, head []byte, size int64) string {
 	if len(head) >= 7 && head[2] == '-' && head[3] == 'l' && head[4] == 'h' && head[6] == '-' {
 		return "lha"
 	}
-	if len(head) >= 4 && binary.BigEndian.Uint32(head[:4]) == 0x000003f3 {
+	if len(head) >= 4 && binary.BigEndian.Uint32(head[:4]) == hunk.HUNK_HEADER {
 		return "amiga-hunk-executable"
 	}
 
