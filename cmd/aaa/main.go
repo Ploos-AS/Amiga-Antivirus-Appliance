@@ -9,7 +9,7 @@ import (
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanner"
 )
 
-const version = "0.1.0-dev"
+const version = "0.2.0-dev"
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "AAA — Amiga AntiVirus Appliance\n\n")
@@ -71,5 +71,12 @@ func scanCommand(args []string) {
 	fmt.Printf("Size:     %d bytes\n", result.Size)
 	fmt.Printf("SHA-256:  %s\n", result.SHA256)
 	fmt.Printf("Format:   %s\n", result.Format)
+	if result.ADF != nil {
+		fmt.Printf("Disk:     %s (%d blocks)\n", result.ADF.DiskType, result.ADF.Blocks)
+		fmt.Printf("DOS type: DOS\\%d (%s)\n", result.ADF.DOSVersion, result.ADF.Filesystem)
+		fmt.Printf("Bootable: %t\n", result.ADF.Bootable)
+		fmt.Printf("Boot CRC: stored=%08x calculated=%08x valid=%t\n", result.ADF.StoredChecksum, result.ADF.CalculatedChecksum, result.ADF.ChecksumValid)
+		fmt.Printf("Root:     %d expected=%d plausible=%t\n", result.ADF.RootBlock, result.ADF.ExpectedRootBlock, result.ADF.RootBlockPlausible)
+	}
 	fmt.Printf("Verdict:  %s\n", result.Verdict)
 }
