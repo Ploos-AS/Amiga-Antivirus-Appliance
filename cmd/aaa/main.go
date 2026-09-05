@@ -9,7 +9,7 @@ import (
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanner"
 )
 
-const version = "0.4.1-dev"
+const version = "0.5.0-dev"
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "AAA — Amiga AntiVirus Appliance\n\n")
@@ -80,12 +80,15 @@ func scanCommand(args []string) {
 		fmt.Printf("Root:     %d expected=%d plausible=%t\n", result.ADF.RootBlock, result.ADF.ExpectedRootBlock, result.ADF.RootBlockPlausible)
 		if result.Filesystem != nil {
 			fmt.Printf("FS root:  %d valid=%t\n", result.Filesystem.RootBlock, result.Filesystem.RootBlockValid)
-			fmt.Printf("FS items: %d files, %d directories\n", result.Filesystem.FileCount, result.Filesystem.DirectoryCount)
+			fmt.Printf("FS items: %d files, %d directories, %d Hunk files\n", result.Filesystem.FileCount, result.Filesystem.DirectoryCount, result.Filesystem.HunkFileCount)
 			for _, entry := range result.Filesystem.Entries {
 				if entry.Payload != nil {
 					fmt.Printf("  %-9s %s [block %d, %d bytes, complete=%t]\n", entry.Type, entry.Path, entry.HeaderBlock, entry.Payload.Size, entry.Payload.Complete)
 					if entry.Payload.SHA256 != "" {
 						fmt.Printf("             SHA-256 %s\n", entry.Payload.SHA256)
+					}
+					if entry.Hunk != nil {
+						fmt.Printf("             Hunk: %d segments, code=%d data=%d bss=%d bytes\n", entry.Hunk.HunkCount, entry.Hunk.CodeBytes, entry.Hunk.DataBytes, entry.Hunk.BSSBytes)
 					}
 				} else {
 					fmt.Printf("  %-9s %s [block %d]\n", entry.Type, entry.Path, entry.HeaderBlock)
