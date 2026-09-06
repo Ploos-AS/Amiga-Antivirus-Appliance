@@ -2,9 +2,11 @@
 
 ## Status
 
-**Qualification framework implemented. Real target qualification pending.**
+**Code-qualified. Real target qualification pending.**
 
-M8.6 is the final M8 gate for the intended Orange Pi Zero 3 + DietPi appliance. Ordinary CI can validate the evidence schema and fail-closed rules, but it cannot truthfully claim appliance qualification without execution on the real target hardware with the intended historical scanner/AmigaOS inputs.
+M8.6 is the final M8 gate for the intended Orange Pi Zero 3 + DietPi appliance. The qualification framework, evidence schema and fail-closed validation are green in CI at HEAD `a40eab7137d67cc0f6d1a5e4b3fa0018cb7c76e4` (CI #276). This establishes the M8 code-qualification boundary only; it does not constitute runtime or appliance qualification.
+
+Ordinary CI can validate the evidence schema and fail-closed rules, but it cannot truthfully claim appliance qualification without execution on the real target hardware with the intended historical scanner/AmigaOS inputs.
 
 ## Evidence contract
 
@@ -38,4 +40,4 @@ Each completed run must preserve original evidence, store the exact raw scanner 
 
 ## Completion rule
 
-M8 may be called **code-qualified** once this framework and the earlier M8 slices are green in CI. It may be called **appliance-qualified** only after the physical Orange Pi Zero 3 + DietPi run set is completed and reviewed.
+M8 is **code-qualified** at the green M8.6 implementation boundary recorded above. It may be called **appliance-qualified** only after the physical Orange Pi Zero 3 + DietPi run set is completed and reviewed.
