@@ -52,10 +52,10 @@ func TestResultPreservesRawLogEvidence(t *testing.T) {
 		DetectionName:       "AAA.Test.Virus",
 		RawExit:             "completed",
 		RawLog:              []byte("Virus found: AAA.Test.Virus\r\n"),
-		InputSHA256:          strings.Repeat("b", 64),
-		DerivedInputSHA256:   strings.Repeat("c", 64),
-		StartedAt:            start,
-		FinishedAt:           start.Add(time.Second),
+		InputSHA256:         strings.Repeat("b", 64),
+		DerivedInputSHA256:  strings.Repeat("c", 64),
+		StartedAt:           start,
+		FinishedAt:          start.Add(time.Second),
 	}
 	result.SealRawLog()
 	if err := result.Validate(); err != nil {
@@ -82,9 +82,9 @@ func TestResultFailClosedSemantics(t *testing.T) {
 		Verdict:             VerdictUnknown,
 		RawExit:             "completed-unparsed",
 		RawLog:              []byte("unrecognized scanner output"),
-		InputSHA256:          strings.Repeat("b", 64),
-		StartedAt:            start,
-		FinishedAt:           start,
+		InputSHA256:         strings.Repeat("b", 64),
+		StartedAt:           start,
+		FinishedAt:          start,
 	}
 	base.SealRawLog()
 	if err := base.Validate(); err != nil {
