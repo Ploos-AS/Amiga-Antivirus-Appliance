@@ -33,14 +33,18 @@ func TestExportAmiGuardResearchFixedPattern(t *testing.T) {
 	if record.Status != "research" || record.Source.Type != "aaa-candidate" {
 		t.Fatalf("unexpected research boundary: %#v", record)
 	}
-	if record.Signature == nil {
-		t.Fatal("fixed-offset pattern should map to AmiGuard signature")
+	if record.SampleSHA256 != nil || record.Signature != nil {
+		t.Fatal("AmiGuard research records must keep sample_sha256 and signature null")
 	}
-	if record.Signature.Offset != 64 || record.Signature.Bytes != "414d494755415244" {
-		t.Fatalf("unexpected signature: %#v", record.Signature)
+	proposal := record.Research.ProposedSignature
+	if proposal == nil {
+		t.Fatal("fixed-offset AAA pattern should be preserved as a research proposal")
 	}
-	if record.Signature.Mask != "ffffffffffffffff" {
-		t.Fatalf("mask=%q", record.Signature.Mask)
+	if proposal.Offset != 64 || proposal.Bytes != "414d494755415244" || proposal.Mask != "ffffffffffffffff" {
+		t.Fatalf("unexpected proposed signature: %#v", proposal)
+	}
+	if record.Research.AAASampleSHA256 != candidate.SampleSHA256 {
+		t.Fatal("AAA sample provenance lost")
 	}
 }
 
@@ -63,15 +67,15 @@ func TestExportAmiGuardResearchAnyOffsetStaysResearchOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if record.Signature != nil {
+	if record.Signature != nil || record.Research.ProposedSignature != nil {
 		t.Fatal("any-offset pattern must not be converted to a fixed AmiGuard signature")
 	}
-	if record.Research == nil || !strings.Contains(record.Research.Note, "any-offset") {
+	if !strings.Contains(record.Research.Note, "any-offset") {
 		t.Fatalf("missing conservative research note: %#v", record.Research)
 	}
 }
 
-func TestExportAmiGuardResearchBootblockHashDoesNotInventPattern(t *testing.T) {
+func TestExportAmiGuardResearchBootblockHashDoesNotClaimVerifiedSample(t *testing.T) {
 	candidate, err := NewExactCandidate(ExactCandidateInput{
 		Family:          "ByteBandit",
 		Kind:            KindBootblockSHA256,
@@ -94,11 +98,11 @@ func TestExportAmiGuardResearchBootblockHashDoesNotInventPattern(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if record.Signature != nil {
-		t.Fatal("hash-only candidate must not invent AmiGuard bytes")
+	if record.SampleSHA256 != nil || record.Signature != nil {
+		t.Fatal("research record must not claim AmiGuard verification")
 	}
-	if record.SampleSHA256 == nil || *record.SampleSHA256 != candidate.SampleSHA256 {
-		t.Fatal("sample provenance lost")
+	if record.Research.AAASampleSHA256 != candidate.SampleSHA256 || record.Research.AAABootblockSHA256 != candidate.BootblockSHA256 {
+		t.Fatal("AAA hash provenance lost")
 	}
 }
 
@@ -132,7 +136,43 @@ func TestMarshalAmiGuardResearchIsStableJSON(t *testing.T) {
 	if err := json.Unmarshal(first, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Signature == nil || decoded.Verifier != "pending-sample-qualification" {
+	if decoded.SampleSHA256 != nil || decoded.Signature != nil || decoded.Verifier != "pending-sample-qualification" {
 		t.Fatalf("unexpected decoded record: %#v", decoded)
+	}
+	if decoded.Research == nil || decoded.Research.ProposedSignature == nil {
+		t.Fatalf("missing research proposal: %#v", decoded.Research)
+	}
+}
+
+func TestAmiGuardCompilerResearchContract(t *testing.T) {
+	offset := int64(16)
+	candidate, err := NewPatternCandidate(PatternCandidateInput{
+		Family:        "Contract",
+		MalwareName:   "Contract Fixture",
+		SampleSHA256:  strings.Repeat("f", 64),
+		Pattern:       FixedPattern{BytesHex: "0011223344556677", Offset: &offset},
+		SourceEngine:  "fixture",
+		DetectionName: "Contract Fixture",
+		Confidence:    ConfidenceSingleEngine,
+		CreatedAt:     time.Date(2026, 9, 6, 19, 4, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := ExportAmiGuardResearch(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Schema != 1 || record.Kind != "bootblock" || record.Status != "research" || record.Synthetic {
+		t.Fatalf("record violates AmiGuard research metadata contract: %#v", record)
+	}
+	if record.SampleSHA256 != nil {
+		t.Fatal("AmiGuard research compiler requires sample_sha256=null")
+	}
+	if record.Signature != nil {
+		t.Fatal("AmiGuard research compiler requires signature=null")
+	}
+	if record.ID == "" || record.Name == "" || record.Family == "" || record.Verifier == "" || record.Cleaner == "" {
+		t.Fatal("AmiGuard required string field missing")
 	}
 }
