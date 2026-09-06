@@ -60,9 +60,9 @@ func TestClassicScannerResultPreservesEvidenceAndProfile(t *testing.T) {
 		ScannerBinarySHA256: strings.Repeat("a", 64),
 		RawExit:             "completed",
 		RawLog:              []byte("Virus found: SCA\r\n"),
-		InputSHA256:          strings.Repeat("b", 64),
-		StartedAt:            start,
-		FinishedAt:           start.Add(time.Second),
+		InputSHA256:         strings.Repeat("b", 64),
+		StartedAt:           start,
+		FinishedAt:          start.Add(time.Second),
 	}
 	result, err := ClassicScannerResult(base, true)
 	if err != nil {
