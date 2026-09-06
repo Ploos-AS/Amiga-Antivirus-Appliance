@@ -94,7 +94,7 @@ func (r ApplianceQualificationRun) Validate() error {
 	if !r.OSProfile.Valid() {
 		return errors.New("appliance qualification run has invalid os profile")
 	}
-	if !isLowerSHA256(r.ScannerBinarySHA256) || !isLowerSHA256(r.InputSHA256) || !isLowerSHA256(r.InputSHA256After) {
+	if !validSHA256(r.ScannerBinarySHA256) || !validSHA256(r.InputSHA256) || !validSHA256(r.InputSHA256After) {
 		return errors.New("appliance qualification run has invalid sha256")
 	}
 	if r.InputSHA256After != r.InputSHA256 {
