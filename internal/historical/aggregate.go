@@ -9,14 +9,14 @@ import (
 // Aggregate summarizes independent historical-scanner evidence without hiding
 // individual engine disagreement.
 type Aggregate struct {
-	InputSHA256        string            `json:"input_sha256"`
-	Results            []Result          `json:"results"`
-	VerdictCounts      map[Verdict]int   `json:"verdict_counts"`
-	DetectionNames     []string          `json:"detection_names,omitempty"`
-	EnginesByVerdict   map[Verdict][]string `json:"engines_by_verdict"`
-	HasDisagreement    bool              `json:"has_disagreement"`
-	Corroborated       bool              `json:"corroborated"`
-	CorroboratedName   string            `json:"corroborated_name,omitempty"`
+	InputSHA256      string               `json:"input_sha256"`
+	Results          []Result             `json:"results"`
+	VerdictCounts    map[Verdict]int      `json:"verdict_counts"`
+	DetectionNames   []string             `json:"detection_names,omitempty"`
+	EnginesByVerdict map[Verdict][]string `json:"engines_by_verdict"`
+	HasDisagreement  bool                 `json:"has_disagreement"`
+	Corroborated     bool                 `json:"corroborated"`
+	CorroboratedName string               `json:"corroborated_name,omitempty"`
 }
 
 // AggregateResults validates and deterministically orders per-engine evidence.
