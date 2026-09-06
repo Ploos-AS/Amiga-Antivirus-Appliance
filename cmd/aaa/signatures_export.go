@@ -8,8 +8,35 @@ import (
 )
 
 func signatureExportCommand(store *signaturefactory.Store, args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "signatures export requires a target")
+		os.Exit(2)
+	}
+
+	if args[0] == "amiguard" {
+		if len(args) != 2 {
+			fmt.Fprintln(os.Stderr, "signatures export amiguard requires exactly one candidate id")
+			os.Exit(2)
+		}
+		candidate, err := store.ReadCandidate(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "read AmiGuard export candidate failed: %v\n", err)
+			os.Exit(1)
+		}
+		encoded, err := signaturefactory.MarshalAmiGuardResearch(candidate)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "AmiGuard research export failed: %v\n", err)
+			os.Exit(1)
+		}
+		if _, err := os.Stdout.Write(encoded); err != nil {
+			fmt.Fprintf(os.Stderr, "AmiGuard research output failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "signatures export requires exactly one target")
+		fmt.Fprintln(os.Stderr, "signatures export aaa/clamav take no additional arguments")
 		os.Exit(2)
 	}
 
