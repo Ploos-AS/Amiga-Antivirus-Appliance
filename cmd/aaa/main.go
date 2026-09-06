@@ -32,6 +32,10 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  aaa signatures bundle sign --private-key <file> <dir>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures bundle verify --trusted-key <file> <dir>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures bundle install --trusted-key <file> <dir>\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures update check [--source <url>]\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures update download --version <version> --url <url> [--output <path>] [--sha256 <digest>]\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures update verify --trusted-key <file> <artifact-or-dir>\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures update install --trusted-key <file> <artifact-or-dir>\n")
 	fmt.Fprintf(os.Stderr, "  aaa version\n")
 }
 
@@ -243,6 +247,8 @@ func signaturesCommand(args []string) {
 		signatureExportCommand(store, args[1:])
 	case "bundle":
 		signatureBundleCommand(store, args[1:])
+	case "update":
+		signatureUpdateCommand(store, args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown signatures subcommand: %s\n", args[0])
 		os.Exit(2)
