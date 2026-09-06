@@ -46,9 +46,9 @@ func TestVTSchutzResultPreservesEvidence(t *testing.T) {
 		ScannerBinarySHA256: strings.Repeat("a", 64),
 		RawExit:             "completed",
 		RawLog:              []byte("VT-Schutz 3.17\r\nVirus found: SCA\r\n"),
-		InputSHA256:          strings.Repeat("b", 64),
-		StartedAt:            start,
-		FinishedAt:           start.Add(time.Second),
+		InputSHA256:         strings.Repeat("b", 64),
+		StartedAt:           start,
+		FinishedAt:          start.Add(time.Second),
 	}
 	result, err := VTSchutzResult(base, true)
 	if err != nil {
@@ -72,9 +72,9 @@ func TestVTSchutzRequiresOS13(t *testing.T) {
 		ScannerBinarySHA256: strings.Repeat("a", 64),
 		RawExit:             "completed",
 		RawLog:              []byte("No virus found"),
-		InputSHA256:          strings.Repeat("b", 64),
-		StartedAt:            start,
-		FinishedAt:           start,
+		InputSHA256:         strings.Repeat("b", 64),
+		StartedAt:           start,
+		FinishedAt:          start,
 	}
 	if _, err := VTSchutzResult(base, true); err == nil {
 		t.Fatal("expected os31 rejection")
