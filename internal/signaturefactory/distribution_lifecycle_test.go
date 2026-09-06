@@ -25,7 +25,10 @@ func TestM75SyntheticReleaseUpdateLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	publicKey := privateKey.Public().(ed25519.PublicKey)
-	trusted := map[string]ed25519.PublicKey{DistributionSignerKeyID(publicKey): publicKey}
+	trusted, err := NewTrustedDistributionKeys(hex.EncodeToString(publicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	bundle := filepath.Join(t.TempDir(), "bundle")
 	createdAt := time.Date(2026, 9, 6, 7, 30, 0, 0, time.UTC)
@@ -40,7 +43,7 @@ func TestM75SyntheticReleaseUpdateLifecycle(t *testing.T) {
 	}
 
 	archive := filepath.Join(t.TempDir(), DistributionArchivePrefix+"1.2.3"+DistributionArchiveSuffix)
-	archiveDigest, err := CreateDistributionReleaseArchive(bundle, archive)
+	_, archiveDigest, err := BuildDistributionReleaseArchive(bundle, archive, trusted)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,12 +82,12 @@ func TestM75SyntheticReleaseUpdateLifecycle(t *testing.T) {
 	}
 
 	extracted := filepath.Join(t.TempDir(), "extracted")
-	version, err := ExtractDistributionReleaseArchive(downloaded, extracted)
+	extractedManifest, err := ExtractDistributionReleaseArchive(downloaded, extracted)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != "1.2.3" {
-		t.Fatalf("extracted version=%s", version)
+	if extractedManifest.Version != "1.2.3" {
+		t.Fatalf("extracted version=%s", extractedManifest.Version)
 	}
 	manifest, identity, err := VerifyDistributionBundle(extracted, trusted)
 	if err != nil {
@@ -116,7 +119,10 @@ func TestM75FailedUpdatePreservesActiveDistribution(t *testing.T) {
 		t.Fatal(err)
 	}
 	publicKey := privateKey.Public().(ed25519.PublicKey)
-	trusted := map[string]ed25519.PublicKey{DistributionSignerKeyID(publicKey): publicKey}
+	trusted, err := NewTrustedDistributionKeys(hex.EncodeToString(publicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	bundle := filepath.Join(t.TempDir(), "bundle")
 	if _, err := BuildDistributionBundle(store, bundle, "1.0.0", time.Date(2026, 9, 6, 7, 0, 0, 0, time.UTC)); err != nil {
@@ -144,8 +150,6 @@ func TestM75FailedUpdatePreservesActiveDistribution(t *testing.T) {
 	if after != before {
 		t.Fatalf("failed update changed active state: before=%#v after=%#v", before, after)
 	}
-
-	_ = hex.EncodeToString(publicKey)
 }
 
 func mustWriteLifecycleFile(t *testing.T, path string, data []byte) {
