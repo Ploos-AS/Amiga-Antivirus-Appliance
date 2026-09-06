@@ -50,13 +50,13 @@ type Result struct {
 	SignatureDatabaseID string    `json:"signature_database_id,omitempty"`
 	Verdict             Verdict   `json:"verdict"`
 	DetectionName       string    `json:"detection_name,omitempty"`
-	RawExit              string    `json:"raw_exit"`
-	RawLog               []byte    `json:"raw_log"`
-	RawLogSHA256         string    `json:"raw_log_sha256"`
-	InputSHA256          string    `json:"input_sha256"`
-	DerivedInputSHA256   string    `json:"derived_input_sha256,omitempty"`
-	StartedAt            time.Time `json:"started_at"`
-	FinishedAt           time.Time `json:"finished_at"`
+	RawExit             string    `json:"raw_exit"`
+	RawLog              []byte    `json:"raw_log"`
+	RawLogSHA256        string    `json:"raw_log_sha256"`
+	InputSHA256         string    `json:"input_sha256"`
+	DerivedInputSHA256  string    `json:"derived_input_sha256,omitempty"`
+	StartedAt           time.Time `json:"started_at"`
+	FinishedAt          time.Time `json:"finished_at"`
 }
 
 func (p OSProfile) Valid() bool {
