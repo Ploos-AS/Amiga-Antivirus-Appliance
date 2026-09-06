@@ -8,9 +8,9 @@ M7.5 is deliberately split between **release production** and **appliance consum
 
 ## Status
 
-**Foundation / implementation in progress.**
+**Code-qualified.** See `docs/M7_5_QUALIFICATION.md`.
 
-M7.4 is code-qualified. M7.5 starts from the M7.4 closing HEAD and must preserve all M7.4 canonicalization, signing, verification, version, downgrade and atomic activation contracts.
+M7.4 is code-qualified. M7.5 preserves all M7.4 canonicalization, signing, verification, version, downgrade and atomic activation contracts.
 
 ## Core boundaries
 
