@@ -21,7 +21,7 @@ jobs:
         run: python3 -m json.tool research/bootblock-sources.json >/dev/null
       - name: Format check
         run: |
-          files="$(gofmt -l cmd internal)"
+          files="$(gofmt -l cmd internal tools)"
           if [ -n "$files" ]; then
             printf 'gofmt required for:\n%s\n' "$files"
             exit 1
@@ -32,6 +32,32 @@ jobs:
         run: go vet ./...
       - name: Test
         run: go test ./...
+      - name: Check out AmiGuard compatibility baseline
+        uses: actions/checkout@v4
+        with:
+          repository: Ploos-AS/AmiGuard
+          ref: ebdd5833615adc1e8b327aac4a0cb7e1a8217d3f
+          path: _amiguard
+          persist-credentials: false
+      - name: Validate AAA AmiGuard export with AmiGuard compiler
+        run: |
+          go run ./tools/amiguard_bridge_fixture > /tmp/aaa-amiguard-research.json
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          from pathlib import Path
+
+          compiler_path = Path("_amiguard/tools/compile_signatures.py")
+          spec = importlib.util.spec_from_file_location("amiguard_compile_signatures", compiler_path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          fixture = Path("/tmp/aaa-amiguard-research.json")
+          with fixture.open("r", encoding="utf-8") as handle:
+              item = json.load(handle)
+          module.validate(str(fixture), item)
+          print("AAA AmiGuard research export accepted by pinned AmiGuard compiler.")
+          PY
       - name: Build amd64
         run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/aaa-linux-amd64 ./cmd/aaa
       - name: Build arm64
