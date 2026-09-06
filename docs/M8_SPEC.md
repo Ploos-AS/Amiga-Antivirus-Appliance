@@ -8,9 +8,11 @@ M8 is preservation-oriented. The appliance must retain the original submitted im
 
 ## Status
 
-**Foundation / implementation in progress.**
+**Code-qualified. Runtime and appliance qualification pending.**
 
-M7.5 is code-qualified. M8 starts from the green M7.5 closure HEAD and must not weaken the M6/M7 evidence, hashing, quarantine, signature or signed-distribution contracts.
+The M8 code path is closed at the green M8.6 implementation boundary. CI #276 succeeded at HEAD `a40eab7137d67cc0f6d1a5e4b3fa0018cb7c76e4`; subsequent documentation-only closure commits record that boundary. Real scanner/runtime qualification and Orange Pi Zero 3 + DietPi appliance qualification remain explicitly pending and must not be inferred from synthetic CI.
+
+M7.5 is code-qualified. M8 must not weaken the M6/M7 evidence, hashing, quarantine, signature or signed-distribution contracts.
 
 ## Initial scanner set
 
@@ -222,6 +224,6 @@ M8 does not:
 
 ## Exit criteria
 
-M8 can be called **code-qualified** when the common historical-scanner framework, disposable emulator boundary, normalized evidence/report integration and the planned engine adapters are implemented with self-contained CI coverage and exact green qualification HEADs.
+M8 is **code-qualified**: the common historical-scanner framework, disposable emulator boundary, normalized evidence/report integration and planned engine adapters are implemented with self-contained CI coverage at the recorded green qualification boundary.
 
 M8 can be called **appliance-qualified** only after the intended actual scanner versions have been exercised under their declared OS profiles on the Orange Pi Zero 3/DietPi target, with original-evidence preservation and reproducible per-engine qualification records.
