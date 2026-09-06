@@ -9,14 +9,14 @@ import (
 // Aggregate summarizes independent historical-scanner evidence without hiding
 // individual engine disagreement.
 type Aggregate struct {
-	InputSHA256      string               `json:"input_sha256"`
-	Results          []Result             `json:"results"`
-	VerdictCounts    map[Verdict]int      `json:"verdict_counts"`
-	DetectionNames   []string             `json:"detection_names,omitempty"`
+	InputSHA256      string              `json:"input_sha256"`
+	Results          []Result            `json:"results"`
+	VerdictCounts    map[Verdict]int     `json:"verdict_counts"`
+	DetectionNames   []string            `json:"detection_names,omitempty"`
 	EnginesByVerdict map[Verdict][]string `json:"engines_by_verdict"`
-	HasDisagreement  bool                 `json:"has_disagreement"`
-	Corroborated     bool                 `json:"corroborated"`
-	CorroboratedName string               `json:"corroborated_name,omitempty"`
+	HasDisagreement  bool                `json:"has_disagreement"`
+	Corroborated     bool                `json:"corroborated"`
+	CorroboratedName string              `json:"corroborated_name,omitempty"`
 }
 
 // AggregateResults validates and deterministically orders per-engine evidence.
@@ -55,7 +55,7 @@ func AggregateResults(results []Result) (Aggregate, error) {
 		EnginesByVerdict: make(map[Verdict][]string),
 	}
 	nameCounts := make(map[string]int)
-	nameDisplay := make(map[string]string)
+	nameVariants := make(map[string][]string)
 	verdictKinds := make(map[Verdict]struct{})
 
 	for _, result := range copyResults {
@@ -63,11 +63,10 @@ func AggregateResults(results []Result) (Aggregate, error) {
 		agg.EnginesByVerdict[result.Verdict] = append(agg.EnginesByVerdict[result.Verdict], result.EngineID)
 		verdictKinds[result.Verdict] = struct{}{}
 		if result.Verdict == VerdictInfected && strings.TrimSpace(result.DetectionName) != "" {
-			key := strings.ToLower(strings.TrimSpace(result.DetectionName))
+			name := strings.TrimSpace(result.DetectionName)
+			key := strings.ToLower(name)
 			nameCounts[key]++
-			if _, ok := nameDisplay[key]; !ok {
-				nameDisplay[key] = strings.TrimSpace(result.DetectionName)
-			}
+			nameVariants[key] = append(nameVariants[key], name)
 		}
 	}
 
@@ -82,10 +81,13 @@ func AggregateResults(results []Result) (Aggregate, error) {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		agg.DetectionNames = append(agg.DetectionNames, nameDisplay[key])
+		variants := append([]string(nil), nameVariants[key]...)
+		sort.Strings(variants)
+		display := variants[0]
+		agg.DetectionNames = append(agg.DetectionNames, display)
 		if !agg.Corroborated && nameCounts[key] >= 2 {
 			agg.Corroborated = true
-			agg.CorroboratedName = nameDisplay[key]
+			agg.CorroboratedName = display
 		}
 	}
 
