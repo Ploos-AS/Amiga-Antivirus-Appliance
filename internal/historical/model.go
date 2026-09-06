@@ -33,30 +33,30 @@ const (
 
 // Engine describes a historical scanner adapter without redistributing it.
 type Engine struct {
-	ID               string      `json:"id"`
-	Name             string      `json:"name"`
-	ExpectedVersion  string      `json:"expected_version"`
+	ID                string      `json:"id"`
+	Name              string      `json:"name"`
+	ExpectedVersion   string      `json:"expected_version"`
 	SupportedProfiles []OSProfile `json:"supported_profiles"`
 }
 
 // Result is derived evidence. RawLog and its digest preserve the scanner's
 // original output while the normalized fields make engines comparable.
 type Result struct {
-	EngineID              string    `json:"engine_id"`
-	EngineName            string    `json:"engine_name"`
-	EngineVersion         string    `json:"engine_version"`
-	OSProfile             OSProfile `json:"os_profile"`
-	ScannerBinarySHA256   string    `json:"scanner_binary_sha256"`
-	SignatureDatabaseID   string    `json:"signature_database_id,omitempty"`
-	Verdict               Verdict   `json:"verdict"`
-	DetectionName         string    `json:"detection_name,omitempty"`
-	RawExit                string    `json:"raw_exit"`
-	RawLog                 []byte    `json:"raw_log"`
-	RawLogSHA256           string    `json:"raw_log_sha256"`
-	InputSHA256            string    `json:"input_sha256"`
-	DerivedInputSHA256     string    `json:"derived_input_sha256,omitempty"`
-	StartedAt              time.Time `json:"started_at"`
-	FinishedAt             time.Time `json:"finished_at"`
+	EngineID            string    `json:"engine_id"`
+	EngineName          string    `json:"engine_name"`
+	EngineVersion       string    `json:"engine_version"`
+	OSProfile           OSProfile `json:"os_profile"`
+	ScannerBinarySHA256 string    `json:"scanner_binary_sha256"`
+	SignatureDatabaseID string    `json:"signature_database_id,omitempty"`
+	Verdict             Verdict   `json:"verdict"`
+	DetectionName       string    `json:"detection_name,omitempty"`
+	RawExit              string    `json:"raw_exit"`
+	RawLog               []byte    `json:"raw_log"`
+	RawLogSHA256         string    `json:"raw_log_sha256"`
+	InputSHA256          string    `json:"input_sha256"`
+	DerivedInputSHA256   string    `json:"derived_input_sha256,omitempty"`
+	StartedAt            time.Time `json:"started_at"`
+	FinishedAt           time.Time `json:"finished_at"`
 }
 
 func (p OSProfile) Valid() bool {
