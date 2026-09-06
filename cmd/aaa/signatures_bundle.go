@@ -21,6 +21,8 @@ func signatureBundleCommand(store *signaturefactory.Store, args []string) {
 		signatureBundleSignCommand(args[1:])
 	case "verify":
 		signatureBundleVerifyCommand(args[1:])
+	case "archive":
+		signatureBundleArchiveCommand(args[1:])
 	case "install":
 		signatureBundleInstallCommand(store, args[1:])
 	default:
