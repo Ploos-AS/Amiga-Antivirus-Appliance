@@ -50,8 +50,22 @@ sample/corpus
 - `ExportAmiGuardResearch(Candidate)`
 - `MarshalAmiGuardResearch(Candidate)`
 
+The CLI exposes a selected stored candidate as deterministic AmiGuard research JSON:
+
+```text
+aaa signatures export amiguard <AAA-candidate-id>
+```
+
+The JSON is written to stdout so it can be reviewed directly or redirected into a file before being copied to AmiGuard, for example:
+
+```text
+aaa signatures export amiguard AAA.Amiga.Example.0123456789abcdef > example-research.json
+```
+
 The output intentionally follows the current AmiGuard schema-v1 research shape observed in `Ploos-AS/AmiGuard`, including `source`, `provenance`, `sample_sha256`, `signature`, `verifier`, `cleaner` and a bridge-specific `research` section.
+
+The CLI reads only an existing validated AAA candidate. It does not write to the AmiGuard repository and it cannot promote an AmiGuard record.
 
 ## Next useful extension
 
-The next step is a CLI command that exports selected AAA candidates to an output directory suitable for review/copy into AmiGuard's `signatures/bootblocks/`, followed by a validation job that checks the generated JSON against AmiGuard's own parser/schema tests without automatically committing anything to the AmiGuard repository.
+The next useful extension is cross-repository validation: exercise exported AAA research JSON against AmiGuard's own signature parser/schema tests, without automatically committing anything to the AmiGuard repository. After that, a batch export directory for selected candidates can be added if it proves useful for signature-research sessions.
