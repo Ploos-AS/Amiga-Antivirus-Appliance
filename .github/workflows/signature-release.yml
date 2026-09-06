@@ -1,0 +1,300 @@
+name: Signature release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Signature version (MAJOR.MINOR.PATCH)
+        required: true
+        type: string
+      source_sha:
+        description: Exact main commit to release from
+        required: true
+        type: string
+      source_run_id:
+        description: Workflow run containing aaa-signature-store artifact
+        required: true
+        type: string
+      dry_run:
+        description: Build and verify artifacts without publishing a release
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: signature-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Package signed signature release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      archive: ${{ steps.meta.outputs.archive }}
+      checksum: ${{ steps.meta.outputs.checksum }}
+    steps:
+      - name: Validate dispatch inputs
+        id: meta
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo "invalid signature release version" >&2
+            exit 1
+          }
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "source_sha must be a full lowercase Git commit SHA" >&2
+            exit 1
+          }
+          [[ "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo "source_run_id must be a positive workflow run id" >&2
+            exit 1
+          }
+          echo "tag=signatures-v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "archive=aaa-signatures-$VERSION.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "checksum=aaa-signatures-$VERSION.tar.gz.sha256" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Prove source commit is on main
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main || {
+            echo "source commit is not on main" >&2
+            exit 1
+          }
+
+      - name: Prove source CI is green
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          count="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SOURCE_SHA}&event=push&status=success&per_page=100" \
+            --jq '[.workflow_runs[] | select(.name == "CI" and .head_sha == env.SOURCE_SHA and .conclusion == "success")] | length')"
+          test "$count" -ge 1 || {
+            echo "no successful CI push run found for exact source commit" >&2
+            exit 1
+          }
+
+      - name: Refuse an existing release identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "tag already exists: $TAG" >&2
+            exit 1
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release already exists: $TAG" >&2
+            exit 1
+          fi
+
+      - name: Validate source artifact provenance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          run_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" --jq .head_sha)"
+          test "$run_sha" = "$SOURCE_SHA" || {
+            echo "source artifact run belongs to $run_sha, expected $SOURCE_SHA" >&2
+            exit 1
+          }
+          run_conclusion="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" --jq .conclusion)"
+          test "$run_conclusion" = success || {
+            echo "source artifact run is not successful" >&2
+            exit 1
+          }
+
+      - name: Download qualified signature store
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/aaa-release-store
+          gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name aaa-signature-store \
+            --dir /tmp/aaa-release-store
+          test -f /tmp/aaa-release-store/generated/aaa/bootblocks.json
+          test -f /tmp/aaa-release-store/generated/clamav/aaa.hsb
+
+      - name: Build release CLI
+        run: go build -trimpath -o /tmp/aaa ./cmd/aaa
+
+      - name: Build, sign, verify and archive
+        id: release
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          ARCHIVE: ${{ steps.meta.outputs.archive }}
+          CHECKSUM: ${{ steps.meta.outputs.checksum }}
+          RELEASE_PRIVATE_KEY_HEX: ${{ secrets.AAA_SIGNATURE_RELEASE_PRIVATE_KEY_HEX }}
+          RELEASE_PUBLIC_KEY_HEX: ${{ secrets.AAA_SIGNATURE_RELEASE_PUBLIC_KEY_HEX }}
+        run: |
+          set -euo pipefail
+          umask 077
+          private_key=/tmp/aaa-signature-release-private.key
+          public_key=/tmp/aaa-signature-release-public.key
+          cleanup() {
+            rm -f "$private_key" "$public_key"
+          }
+          trap cleanup EXIT
+
+          test -n "$RELEASE_PRIVATE_KEY_HEX" || {
+            echo "AAA_SIGNATURE_RELEASE_PRIVATE_KEY_HEX is required" >&2
+            exit 1
+          }
+          test -n "$RELEASE_PUBLIC_KEY_HEX" || {
+            echo "AAA_SIGNATURE_RELEASE_PUBLIC_KEY_HEX is required" >&2
+            exit 1
+          }
+          printf '%s\n' "$RELEASE_PRIVATE_KEY_HEX" > "$private_key"
+          printf '%s\n' "$RELEASE_PUBLIC_KEY_HEX" > "$public_key"
+          unset RELEASE_PRIVATE_KEY_HEX RELEASE_PUBLIC_KEY_HEX
+
+          sudo rm -rf /data/aaa/signatures
+          sudo mkdir -p /data/aaa/signatures
+          sudo chown -R "$(id -u):$(id -g)" /data/aaa
+          cp -a /tmp/aaa-release-store/. /data/aaa/signatures/
+
+          rm -rf /tmp/aaa-release-bundle /tmp/aaa-release-output
+          mkdir -p /tmp/aaa-release-output
+          /tmp/aaa signatures bundle build --version "$VERSION" --output /tmp/aaa-release-bundle
+          /tmp/aaa signatures bundle sign --private-key "$private_key" /tmp/aaa-release-bundle
+          /tmp/aaa signatures bundle verify --trusted-key "$public_key" /tmp/aaa-release-bundle
+          /tmp/aaa signatures bundle archive \
+            --trusted-key "$public_key" \
+            --output "/tmp/aaa-release-output/$ARCHIVE" \
+            --checksum "/tmp/aaa-release-output/$CHECKSUM" \
+            /tmp/aaa-release-bundle
+
+          manifest_version="$(jq -r .version /tmp/aaa-release-bundle/manifest.json)"
+          test "$manifest_version" = "$VERSION"
+          manifest_sha256="$(sha256sum /tmp/aaa-release-bundle/manifest.json | awk '{print $1}')"
+          signer_key_id="$(jq -r .signer_key_id /tmp/aaa-release-bundle/manifest.json)"
+          created_at="$(jq -r .created_at /tmp/aaa-release-bundle/manifest.json)"
+          archive_sha256="$(sha256sum "/tmp/aaa-release-output/$ARCHIVE" | awk '{print $1}')"
+          grep -Fx "$archive_sha256  $ARCHIVE" "/tmp/aaa-release-output/$CHECKSUM"
+
+          {
+            echo "# AAA signature release v$VERSION"
+            echo
+            echo "- Source commit: $GITHUB_SHA"
+            echo "- Manifest SHA-256: $manifest_sha256"
+            echo "- Signer key ID: $signer_key_id"
+            echo "- Archive SHA-256: $archive_sha256"
+            echo "- Created at: $created_at"
+            echo
+            echo "The transport archive is not trusted merely because it came from GitHub or HTTPS."
+            echo "AAA must verify manifest.json and manifest.sig against an independently trusted Ed25519 public key before installation."
+          } > /tmp/aaa-release-output/release-notes.md
+
+          echo "manifest_sha256=$manifest_sha256" >> "$GITHUB_OUTPUT"
+          echo "signer_key_id=$signer_key_id" >> "$GITHUB_OUTPUT"
+          echo "archive_sha256=$archive_sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload qualified release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaa-signature-release-${{ inputs.version }}
+          path: |
+            /tmp/aaa-release-output/${{ steps.meta.outputs.archive }}
+            /tmp/aaa-release-output/${{ steps.meta.outputs.checksum }}
+            /tmp/aaa-release-output/release-notes.md
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Dry-run summary
+        if: ${{ inputs.dry_run }}
+        shell: bash
+        run: |
+          {
+            echo "## Signature release dry run"
+            echo
+            echo "Tag: \`${{ steps.meta.outputs.tag }}\`"
+            echo "Archive: \`${{ steps.meta.outputs.archive }}\`"
+            echo "Manifest SHA-256: \`${{ steps.release.outputs.manifest_sha256 }}\`"
+            echo "Signer key ID: \`${{ steps.release.outputs.signer_key_id }}\`"
+            echo "Archive SHA-256: \`${{ steps.release.outputs.archive_sha256 }}\`"
+            echo
+            echo "No tag or GitHub Release was created."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish immutable signature release
+    if: ${{ !inputs.dry_run }}
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: aaa-signature-release-${{ inputs.version }}
+          path: release
+
+      - name: Recheck release identity is unused
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.package.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+            echo "tag appeared after package gate: $TAG" >&2
+            exit 1
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release appeared after package gate: $TAG" >&2
+            exit 1
+          fi
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.package.outputs.tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          ARCHIVE: ${{ needs.package.outputs.archive }}
+          CHECKSUM: ${{ needs.package.outputs.checksum }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            "release/$ARCHIVE" \
+            "release/$CHECKSUM" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title "AAA signature release v${{ inputs.version }}" \
+            --notes-file release/release-notes.md \
+            --verify-tag=false
