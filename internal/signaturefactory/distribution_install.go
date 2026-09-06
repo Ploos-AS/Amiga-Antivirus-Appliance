@@ -12,7 +12,7 @@ import (
 
 const (
 	DistributionInstallStateSchema = 1
-	DistributionStateFilename       = "current.json"
+	DistributionStateFilename      = "current.json"
 )
 
 type DistributionInstallState struct {
