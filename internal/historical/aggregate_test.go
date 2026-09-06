@@ -18,9 +18,9 @@ func fixtureHistoricalResult(engine string, verdict Verdict, detection string, i
 		DetectionName:       detection,
 		RawExit:             "completed",
 		RawLog:              []byte(engine + ": " + string(verdict)),
-		InputSHA256:          input,
-		StartedAt:            start,
-		FinishedAt:           start.Add(time.Second),
+		InputSHA256:         input,
+		StartedAt:           start,
+		FinishedAt:          start.Add(time.Second),
 	}
 	result.SealRawLog()
 	return result
