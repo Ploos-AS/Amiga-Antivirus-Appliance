@@ -44,21 +44,25 @@ type AmiGuardSignature struct {
 }
 
 type AmiGuardResearchDetail struct {
-	AAAStatus          Status     `json:"aaa_status"`
-	AAAKind            Kind       `json:"aaa_kind"`
-	AAAConfidence      Confidence `json:"aaa_confidence"`
-	SourceEngine       string     `json:"source_engine"`
-	SourceVersion      string     `json:"source_version,omitempty"`
-	OSProfile          string     `json:"os_profile,omitempty"`
-	SignatureDBVersion string     `json:"signature_db_version,omitempty"`
-	DetectionName      string     `json:"detection_name"`
-	Note               string     `json:"note"`
+	AAAStatus          Status             `json:"aaa_status"`
+	AAAKind            Kind               `json:"aaa_kind"`
+	AAAConfidence      Confidence         `json:"aaa_confidence"`
+	AAASampleSHA256    string             `json:"aaa_sample_sha256,omitempty"`
+	AAABootblockSHA256 string             `json:"aaa_bootblock_sha256,omitempty"`
+	SourceEngine       string             `json:"source_engine"`
+	SourceVersion      string             `json:"source_version,omitempty"`
+	OSProfile          string             `json:"os_profile,omitempty"`
+	SignatureDBVersion string             `json:"signature_db_version,omitempty"`
+	DetectionName      string             `json:"detection_name"`
+	ProposedSignature  *AmiGuardSignature `json:"proposed_signature,omitempty"`
+	Note               string             `json:"note"`
 }
 
 // ExportAmiGuardResearch converts one validated AAA candidate into a deterministic
-// AmiGuard research record. Only fixed-offset exact byte patterns can be mapped
-// losslessly to AmiGuard's current offset/bytes/mask signature form. Other AAA
-// candidate kinds remain useful research handoffs but carry signature=null.
+// AmiGuard schema-v1 research record. AmiGuard's current compiler requires
+// research records to have both sample_sha256=null and signature=null, so AAA
+// preserves candidate hashes and any fixed-offset byte proposal under the
+// research object instead of placing unverified material in production fields.
 func ExportAmiGuardResearch(candidate Candidate) (AmiGuardResearchRecord, error) {
 	if err := candidate.Validate(); err != nil {
 		return AmiGuardResearchRecord{}, fmt.Errorf("invalid AAA candidate: %w", err)
@@ -69,20 +73,22 @@ func ExportAmiGuardResearch(candidate Candidate) (AmiGuardResearchRecord, error)
 	}
 
 	record := AmiGuardResearchRecord{
-		Schema:    1,
-		ID:        "aaa." + strings.ToLower(family) + "." + suffix,
-		Name:      candidate.MalwareName,
-		Family:    family,
-		Kind:      "bootblock",
-		Status:    "research",
-		Synthetic: false,
+		Schema:       1,
+		ID:           "aaa." + strings.ToLower(family) + "." + suffix,
+		Name:         candidate.MalwareName,
+		Family:       family,
+		Kind:         "bootblock",
+		Status:       "research",
+		Synthetic:    false,
+		SampleSHA256: nil,
+		Signature:    nil,
 		Source: AmiGuardSource{
 			Type:      "aaa-candidate",
 			Reference: candidate.ID,
 		},
 		Provenance: AmiGuardProvenance{
 			Derivation:           "Generated from a validated AAA signature-factory candidate; no automatic AmiGuard promotion is implied.",
-			VerificationRequired: "Re-derive and verify the signature independently against legally analyzable clean and infected samples before promotion in AmiGuard.",
+			VerificationRequired: "Re-derive and verify sample identity and any proposed signature independently against legally analyzable clean and infected samples before promotion in AmiGuard.",
 		},
 		Verifier: "pending-sample-qualification",
 		Cleaner:  "none",
@@ -90,16 +96,14 @@ func ExportAmiGuardResearch(candidate Candidate) (AmiGuardResearchRecord, error)
 			AAAStatus:          candidate.Status,
 			AAAKind:            candidate.Kind,
 			AAAConfidence:      candidate.Confidence,
+			AAASampleSHA256:    candidate.SampleSHA256,
+			AAABootblockSHA256: candidate.BootblockSHA256,
 			SourceEngine:       candidate.SourceEngine,
 			SourceVersion:      candidate.SourceVersion,
 			OSProfile:          candidate.OSProfile,
 			SignatureDBVersion: candidate.SignatureDBVersion,
 			DetectionName:      candidate.DetectionName,
 		},
-	}
-	if candidate.SampleSHA256 != "" {
-		sample := candidate.SampleSHA256
-		record.SampleSHA256 = &sample
 	}
 
 	switch candidate.Kind {
@@ -112,14 +116,14 @@ func ExportAmiGuardResearch(candidate Candidate) (AmiGuardResearchRecord, error)
 			return record, nil
 		}
 		bytesHex := candidate.Pattern.BytesHex
-		record.Signature = &AmiGuardSignature{
+		record.Research.ProposedSignature = &AmiGuardSignature{
 			Offset: *candidate.Pattern.Offset,
 			Bytes:  bytesHex,
 			Mask:   strings.Repeat("ff", len(bytesHex)/2),
 		}
-		record.Research.Note = "Exact AAA fixed-offset pattern mapped to an all-bits-significant AmiGuard mask; still research-only until AmiGuard qualification."
+		record.Research.Note = "Exact AAA fixed-offset pattern preserved as a research-only proposed signature; AmiGuard production signature remains null until independent qualification."
 	case KindBootblockSHA256:
-		record.Research.Note = "AAA bootblock SHA-256 candidate has no byte pattern; use its sample/evidence to derive an AmiGuard offset/bytes/mask signature."
+		record.Research.Note = "AAA bootblock SHA-256 candidate has no byte pattern; use its research hashes/evidence to derive an AmiGuard offset/bytes/mask signature."
 	case KindFileSHA256:
 		record.Research.Note = "AAA file SHA-256 candidate is not directly representable as an AmiGuard bootblock byte signature."
 	default:
