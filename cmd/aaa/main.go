@@ -28,6 +28,10 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  aaa signatures reject <id>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures export aaa\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures export clamav\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures bundle build --version <version> --output <dir>\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures bundle sign --private-key <file> <dir>\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures bundle verify --trusted-key <file> <dir>\n")
+	fmt.Fprintf(os.Stderr, "  aaa signatures bundle install --trusted-key <file> <dir>\n")
 	fmt.Fprintf(os.Stderr, "  aaa version\n")
 }
 
@@ -237,6 +241,8 @@ func signaturesCommand(args []string) {
 		fmt.Printf("%s %s\n", candidate.Status, candidate.ID)
 	case "export":
 		signatureExportCommand(store, args[1:])
+	case "bundle":
+		signatureBundleCommand(store, args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown signatures subcommand: %s\n", args[0])
 		os.Exit(2)
