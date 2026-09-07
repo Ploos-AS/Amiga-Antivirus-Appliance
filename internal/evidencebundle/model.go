@@ -23,14 +23,14 @@ var sha256Pattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 type Kind string
 
 const (
-	KindArtifact           Kind = "artifact"
-	KindScanReport         Kind = "scan-report"
-	KindEngineEvidence     Kind = "engine-evidence"
+	KindArtifact            Kind = "artifact"
+	KindScanReport          Kind = "scan-report"
+	KindEngineEvidence      Kind = "engine-evidence"
 	KindAcquisitionEvidence Kind = "acquisition-evidence"
-	KindRepeatability      Kind = "repeatability"
-	KindAcquisitionSession Kind = "acquisition-session"
-	KindRawFlux            Kind = "raw-flux"
-	KindSignatureEvidence  Kind = "signature-evidence"
+	KindRepeatability       Kind = "repeatability"
+	KindAcquisitionSession  Kind = "acquisition-session"
+	KindRawFlux             Kind = "raw-flux"
+	KindSignatureEvidence   Kind = "signature-evidence"
 )
 
 // Entry binds one portable relative name to its exact bytes.
