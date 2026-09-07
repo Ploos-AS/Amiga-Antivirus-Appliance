@@ -27,7 +27,16 @@ jobs:
             exit 1
           fi
       - name: Appliance shell syntax
-        run: sh -n scripts/install-m9.sh scripts/qualify-m9.sh scripts/qualify-m10.sh
+        run: sh -n scripts/install-m9.sh scripts/qualify-m9.sh scripts/qualify-m10.sh scripts/install-m11.sh scripts/qualify-m11.sh
+      - name: M11 Samba policy assertions
+        run: |
+          grep -Fq 'server min protocol = SMB2_10' samba/aaa-drop.conf
+          grep -Fq 'server max protocol = SMB3' samba/aaa-drop.conf
+          grep -Fq 'map to guest = Never' samba/aaa-drop.conf
+          grep -Fq 'guest ok = no' samba/aaa-drop.conf
+          grep -Fq 'valid users = aaa-drop' samba/aaa-drop.conf
+          grep -Fq 'follow symlinks = no' samba/aaa-drop.conf
+          grep -Fq 'path = /data/aaa/drop' samba/aaa-drop.conf
       - name: M9.5 systemd unit verification
         run: |
           sudo install -m 0755 /bin/true /usr/local/bin/aaa
