@@ -22,7 +22,9 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "AAA — Amiga AntiVirus Appliance\n\n")
 	fmt.Fprintf(os.Stderr, "Usage:\n")
 	fmt.Fprintf(os.Stderr, "  aaa scan [--json] [--clamav] <file>\n")
-	fmt.Fprintf(os.Stderr, "  aaa acquire [--json] [--device <device>] [--gw <path>] [--timeout <duration>] [--evidence <path>] [--log <path>] [--note <text>] <output.adf>\n")
+	fmt.Fprintf(os.Stderr, "  aaa acquire [--json] [--device <device>] [--gw <path>] [--timeout <duration>] [--reads <n>] [--repeatability <path>] [--evidence <path>] [--log <path>] [--note <text>] <output.adf>\n")
+	fmt.Fprintf(os.Stderr, "  aaa acquire-flux [--json] [--device <device>] [--gw <path>] [--timeout <duration>] [--evidence <path>] [--log <path>] [--note <text>] <output.scp>\n")
+	fmt.Fprintf(os.Stderr, "  aaa acquire-session [--json] [--device <device>] [--gw <path>] [--timeout <duration>] [--reads <n>] [--note <text>] <output-prefix>\n")
 	fmt.Fprintf(os.Stderr, "  aaa daemon [--workers <n>] [--queue-depth <n>] [--state-root <dir>] [--incoming-root <dir>] [--max-upload-bytes <n>] [--listen <addr>]\n")
 	fmt.Fprintf(os.Stderr, "  aaa support identify --kind <kind> --version <version> [--name <name>] [--source <source>] <file>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures candidates [--json]\n")
@@ -53,6 +55,10 @@ func main() {
 		scanCommand(os.Args[2:])
 	case "acquire":
 		acquireCommand(os.Args[2:])
+	case "acquire-flux":
+		acquireFluxCommand(os.Args[2:])
+	case "acquire-session":
+		acquireSessionCommand(os.Args[2:])
 	case "daemon":
 		daemonCommand(os.Args[2:])
 	case "support":
