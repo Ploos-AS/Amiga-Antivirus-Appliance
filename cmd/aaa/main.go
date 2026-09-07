@@ -22,7 +22,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "AAA — Amiga AntiVirus Appliance\n\n")
 	fmt.Fprintf(os.Stderr, "Usage:\n")
 	fmt.Fprintf(os.Stderr, "  aaa scan [--json] [--clamav] <file>\n")
-	fmt.Fprintf(os.Stderr, "  aaa daemon [--workers <n>] [--queue-depth <n>]\n")
+	fmt.Fprintf(os.Stderr, "  aaa daemon [--workers <n>] [--queue-depth <n>] [--state-root <dir>] [--incoming-root <dir>] [--max-upload-bytes <n>] [--listen <addr>]\n")
 	fmt.Fprintf(os.Stderr, "  aaa support identify --kind <kind> --version <version> [--name <name>] [--source <source>] <file>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures candidates [--json]\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures validate\n")
@@ -56,9 +56,9 @@ func main() {
 		supportCommand(os.Args[2:])
 	case "signatures":
 		signaturesCommand(os.Args[2:])
-	case "version", "--version", "-version":
-		fmt.Printf("aaa %s\n", version)
-	case "help", "--help", "-h":
+	case "version":
+		fmt.Println(version)
+	case "help", "-h", "--help":
 		usage()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", os.Args[1])
@@ -70,8 +70,8 @@ func main() {
 func scanCommand(args []string) {
 	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
-	clamAVEnabled := fs.Bool("clamav", false, "also scan the exact input file with ClamAV")
+	jsonOut := fs.Bool("json", false, "print JSON result")
+	clamAV := fs.Bool("clamav", false, "scan the input with clamscan and include attributed ClamAV evidence")
 	if err := fs.Parse(args); err != nil {
 		os.Exit(2)
 	}
@@ -80,133 +80,51 @@ func scanCommand(args []string) {
 		os.Exit(2)
 	}
 
-	path := fs.Arg(0)
-	result, err := scanner.ScanFile(path)
+	result, err := scanner.ScanFile(fs.Arg(0))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "scan failed: %v\n", err)
 		os.Exit(1)
 	}
-	if result.Verdict == "infected" {
-		if err := recordSignatureCandidates(result); err != nil {
-			fmt.Fprintf(os.Stderr, "signature factory warning: %v\n", err)
-		}
-	}
 
-	var clamResult *signaturefactory.ClamAVScanResult
-	if *clamAVEnabled {
-		clam, err := signaturefactory.RunClamAV(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "clamav scan failed: %v\n", err)
-			os.Exit(1)
-		}
-		if err := signaturefactory.VerifyFileSHA256(path, result.SHA256); err != nil {
-			fmt.Fprintf(os.Stderr, "clamav input integrity failed: %v\n", err)
-			os.Exit(1)
-		}
-		clamResult = &clam
-		if clam.Verdict == "infected" {
-			if err := recordClamAVCandidate(result, clam); err != nil {
-				fmt.Fprintf(os.Stderr, "signature factory warning: %v\n", err)
-			}
-		}
+	output := scanJSONOutput{Scan: result}
+	if *clamAV {
+		startedAt := time.Now().UTC()
+		clamResult := signaturefactory.RunClamAVScan(signaturefactory.ClamAVScanRequest{
+			SamplePath:   fs.Arg(0),
+			SampleSHA256: result.SHA256,
+			StartedAt:    startedAt,
+		})
+		output.ClamAV = &clamResult
 	}
 
 	if *jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		if clamResult != nil {
-			if err := enc.Encode(scanJSONOutput{Scan: result, ClamAV: clamResult}); err != nil {
-				fmt.Fprintf(os.Stderr, "output failed: %v\n", err)
-				os.Exit(1)
-			}
-		} else if err := enc.Encode(result); err != nil {
-			fmt.Fprintf(os.Stderr, "output failed: %v\n", err)
+		if err := enc.Encode(output); err != nil {
+			fmt.Fprintf(os.Stderr, "encode result: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 
-	fmt.Printf("AAA scan\n")
-	fmt.Printf("File:     %s\n", result.Name)
-	fmt.Printf("Size:     %d bytes\n", result.Size)
-	fmt.Printf("SHA-256:  %s\n", result.SHA256)
-	fmt.Printf("Format:   %s\n", result.Format)
-	if result.Archive != nil {
-		fmt.Printf("Archive:  %s expanded=%d bytes\n", result.Archive.Format, result.Archive.ExpandedSize)
-		for _, member := range result.Archive.Members {
-			fmt.Printf("  member    %s [%d bytes, %s]\n", member.Name, member.Size, member.Format)
-			fmt.Printf("            SHA-256 %s\n", member.SHA256)
-		}
-		for _, warning := range result.Archive.Warnings {
-			fmt.Printf("Archive warn: %s\n", warning)
-		}
-	}
-	for _, member := range result.MemberResults {
-		fmt.Printf("Member scan: %s [%s] verdict=%s\n", member.Name, member.Format, member.Verdict)
-		if member.ADF != nil {
-			fmt.Printf("             ADF %s DOS\\%d (%s) boot-sha=%s\n", member.ADF.DiskType, member.ADF.DOSVersion, member.ADF.Filesystem, member.ADF.BootblockSHA256)
-		}
-		if member.Filesystem != nil {
-			fmt.Printf("             FS %d files, %d directories, %d Hunk files\n", member.Filesystem.FileCount, member.Filesystem.DirectoryCount, member.Filesystem.HunkFileCount)
-		}
-		if member.Hunk != nil {
-			fmt.Printf("             Hunk %d segments, code=%d data=%d bss=%d bytes\n", member.Hunk.HunkCount, member.Hunk.CodeBytes, member.Hunk.DataBytes, member.Hunk.BSSBytes)
-		}
-		if member.Detection != "" {
-			fmt.Printf("             Detect %s\n", member.Detection)
-		}
-		if member.Error != "" {
-			fmt.Printf("             Error %s\n", member.Error)
-		}
-	}
-	if result.ADF != nil {
-		fmt.Printf("Disk:     %s (%d blocks)\n", result.ADF.DiskType, result.ADF.Blocks)
-		fmt.Printf("DOS type: DOS\\%d (%s)\n", result.ADF.DOSVersion, result.ADF.Filesystem)
-		fmt.Printf("Bootable: %t\n", result.ADF.Bootable)
-		fmt.Printf("Boot SHA: %s\n", result.ADF.BootblockSHA256)
-		fmt.Printf("Checksum: stored=%08x calculated=%08x valid=%t\n", result.ADF.StoredChecksum, result.ADF.CalculatedChecksum, result.ADF.ChecksumValid)
-		fmt.Printf("Root:     %d expected=%d plausible=%t\n", result.ADF.RootBlock, result.ADF.ExpectedRootBlock, result.ADF.RootBlockPlausible)
-		if result.Filesystem != nil {
-			fmt.Printf("FS root:  %d valid=%t\n", result.Filesystem.RootBlock, result.Filesystem.RootBlockValid)
-			fmt.Printf("FS items: %d files, %d directories, %d Hunk files\n", result.Filesystem.FileCount, result.Filesystem.DirectoryCount, result.Filesystem.HunkFileCount)
-			for _, entry := range result.Filesystem.Entries {
-				if entry.Payload != nil {
-					fmt.Printf("  %-9s %s [block %d, %d bytes, complete=%t]\n", entry.Type, entry.Path, entry.HeaderBlock, entry.Payload.Size, entry.Payload.Complete)
-					if entry.Payload.SHA256 != "" {
-						fmt.Printf("             SHA-256 %s\n", entry.Payload.SHA256)
-					}
-					if entry.Hunk != nil {
-						fmt.Printf("             Hunk: %d segments, code=%d data=%d bss=%d bytes\n", entry.Hunk.HunkCount, entry.Hunk.CodeBytes, entry.Hunk.DataBytes, entry.Hunk.BSSBytes)
-					}
-				} else {
-					fmt.Printf("  %-9s %s [block %d]\n", entry.Type, entry.Path, entry.HeaderBlock)
-				}
-			}
-			for _, warning := range result.Filesystem.Warnings {
-				fmt.Printf("FS warn:  %s\n", warning)
-			}
-		}
-		if result.BootblockMatch == nil {
-			fmt.Printf("Boot DB:  unknown\n")
-		} else {
-			fmt.Printf("Boot DB:  %s — %s\n", result.BootblockMatch.Status, result.BootblockMatch.Name)
-			fmt.Printf("Source:   %s\n", result.BootblockMatch.Source)
-		}
-	}
-	if result.Hunk != nil {
-		fmt.Printf("Hunk:     recognized=%t segments=%d code=%d data=%d bss=%d bytes\n", result.Hunk.Recognized, result.Hunk.HunkCount, result.Hunk.CodeBytes, result.Hunk.DataBytes, result.Hunk.BSSBytes)
-		for _, warning := range result.Hunk.Warnings {
-			fmt.Printf("Hunk warn: %s\n", warning)
-		}
-	}
+	fmt.Printf("Name: %s\n", result.Name)
+	fmt.Printf("Size: %d\n", result.Size)
+	fmt.Printf("SHA256: %s\n", result.SHA256)
+	fmt.Printf("Format: %s\n", result.Format)
+	fmt.Printf("Verdict: %s\n", result.Verdict)
 	if result.Detection != "" {
-		fmt.Printf("Detect:   %s\n", result.Detection)
+		fmt.Printf("Detection: %s\n", result.Detection)
 	}
-	fmt.Printf("Verdict:  %s\n", result.Verdict)
-	if clamResult != nil {
-		fmt.Printf("ClamAV:   %s engine=%s db=%s\n", clamResult.Verdict, clamResult.EngineVersion, clamResult.SignatureDBVersion)
-		if clamResult.DetectionName != "" {
-			fmt.Printf("Clam detect: %s\n", clamResult.DetectionName)
+	if output.ClamAV != nil {
+		fmt.Printf("ClamAV engine: %s\n", output.ClamAV.Engine.Name)
+		fmt.Printf("ClamAV version: %s\n", output.ClamAV.Engine.Version)
+		fmt.Printf("ClamAV database: %s\n", output.ClamAV.Engine.DatabaseVersion)
+		fmt.Printf("ClamAV verdict: %s\n", output.ClamAV.Verdict)
+		if output.ClamAV.DetectionName != "" {
+			fmt.Printf("ClamAV detection: %s\n", output.ClamAV.DetectionName)
+		}
+		if output.ClamAV.Error != "" {
+			fmt.Printf("ClamAV error: %s\n", output.ClamAV.Error)
 		}
 	}
 }
@@ -214,57 +132,34 @@ func scanCommand(args []string) {
 func signaturesCommand(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "signatures requires a subcommand")
-		usage()
 		os.Exit(2)
-	}
-	store, err := signaturefactory.NewStore(signaturefactory.StoreRootFromEnv())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "signature store failed: %v\n", err)
-		os.Exit(1)
 	}
 
 	switch args[0] {
 	case "candidates":
-		signatureCandidatesCommand(store, args[1:])
+		signaturesCandidates(args[1:])
 	case "validate":
-		if len(args) != 1 {
-			fmt.Fprintln(os.Stderr, "signatures validate takes no arguments")
-			os.Exit(2)
-		}
-		if err := store.ValidateCandidates(); err != nil {
-			fmt.Fprintf(os.Stderr, "signature validation failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("signature candidates valid")
+		signaturesValidate(args[1:])
 	case "promote":
-		signaturePromoteCommand(store, args[1:])
+		signaturesPromote(args[1:])
 	case "reject":
-		if len(args) != 2 {
-			fmt.Fprintln(os.Stderr, "signatures reject requires exactly one candidate id")
-			os.Exit(2)
-		}
-		candidate, err := store.Reject(args[1])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "signature reject failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("%s %s\n", candidate.Status, candidate.ID)
+		signaturesReject(args[1:])
 	case "export":
-		signatureExportCommand(store, args[1:])
+		signaturesExport(args[1:])
 	case "bundle":
-		signatureBundleCommand(store, args[1:])
+		signaturesBundle(args[1:])
 	case "update":
-		signatureUpdateCommand(store, args[1:])
+		signaturesUpdate(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown signatures subcommand: %s\n", args[0])
 		os.Exit(2)
 	}
 }
 
-func signatureCandidatesCommand(store *signaturefactory.Store, args []string) {
+func signaturesCandidates(args []string) {
 	fs := flag.NewFlagSet("signatures candidates", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
+	jsonOut := fs.Bool("json", false, "print candidates as JSON")
 	if err := fs.Parse(args); err != nil {
 		os.Exit(2)
 	}
@@ -272,39 +167,84 @@ func signatureCandidatesCommand(store *signaturefactory.Store, args []string) {
 		fmt.Fprintln(os.Stderr, "signatures candidates takes no positional arguments")
 		os.Exit(2)
 	}
-	candidates, err := store.ListCandidates()
+
+	store, err := signaturefactory.NewStore(signaturefactory.DefaultRoot())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "list signature candidates failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "signature store failed: %v\n", err)
 		os.Exit(1)
 	}
+	candidates, err := store.ListCandidates()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "list candidates failed: %v\n", err)
+		os.Exit(1)
+	}
+
 	if *jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(candidates); err != nil {
-			fmt.Fprintf(os.Stderr, "output failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "encode candidates: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
+
+	if len(candidates) == 0 {
+		fmt.Println("No signature candidates.")
+		return
+	}
 	for _, candidate := range candidates {
-		fmt.Printf("%s\t%s\t%s\t%s\n", candidate.ID, candidate.Kind, candidate.Confidence, candidate.DetectionName)
+		fmt.Printf("%s\t%s\t%s\n", candidate.ID, candidate.Status, candidate.DetectionName)
 	}
 }
 
-func recordSignatureCandidates(result scanner.Result) error {
-	store, err := signaturefactory.NewStore(signaturefactory.StoreRootFromEnv())
-	if err != nil {
-		return err
+func signaturesValidate(args []string) {
+	fs := flag.NewFlagSet("signatures validate", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	if err := fs.Parse(args); err != nil {
+		os.Exit(2)
 	}
-	_, err = signaturefactory.RecordScanResult(store, result, time.Now().UTC())
-	return err
+	if fs.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "signatures validate takes no positional arguments")
+		os.Exit(2)
+	}
+
+	root := signaturefactory.DefaultRoot()
+	result, err := signaturefactory.ValidateStore(root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "signature validation failed: %v\n", err)
+		os.Exit(1)
+	}
+	if !result.Valid {
+		fmt.Fprintf(os.Stderr, "signature validation failed:\n")
+		for _, issue := range result.Issues {
+			fmt.Fprintf(os.Stderr, "- %s\n", issue)
+		}
+		os.Exit(1)
+	}
+	fmt.Printf("Signature store valid: %d candidates, %d promoted, %d rejected\n", result.Candidates, result.Promoted, result.Rejected)
 }
 
-func recordClamAVCandidate(result scanner.Result, clam signaturefactory.ClamAVScanResult) error {
-	store, err := signaturefactory.NewStore(signaturefactory.StoreRootFromEnv())
-	if err != nil {
-		return err
+func signaturesReject(args []string) {
+	fs := flag.NewFlagSet("signatures reject", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	if err := fs.Parse(args); err != nil {
+		os.Exit(2)
 	}
-	_, _, err = signaturefactory.RecordClamAVResult(store, result, clam, time.Now().UTC())
-	return err
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "signatures reject requires exactly one candidate id")
+		os.Exit(2)
+	}
+
+	store, err := signaturefactory.NewStore(signaturefactory.DefaultRoot())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "signature store failed: %v\n", err)
+		os.Exit(1)
+	}
+	candidate, err := store.Reject(fs.Arg(0), time.Now().UTC())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "reject candidate failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Rejected signature candidate %s\n", candidate.ID)
 }
