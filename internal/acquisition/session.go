@@ -12,13 +12,13 @@ const SessionSchema = "aaa-acquisition-session-v1"
 // belong to one physical-media handling session. It does not claim that an ADF
 // was derived from the SCP capture.
 type Session struct {
-	Schema        string         `json:"schema"`
-	CreatedAt     time.Time      `json:"created_at"`
-	Note          string         `json:"note,omitempty"`
-	Flux          Evidence       `json:"flux"`
-	ADFReads      []Evidence     `json:"adf_reads"`
-	Repeatability Repeatability  `json:"repeatability"`
-	Relationship  string         `json:"relationship"`
+	Schema        string        `json:"schema"`
+	CreatedAt     time.Time     `json:"created_at"`
+	Note          string        `json:"note,omitempty"`
+	Flux          Evidence      `json:"flux"`
+	ADFReads      []Evidence    `json:"adf_reads"`
+	Repeatability Repeatability `json:"repeatability"`
+	Relationship  string        `json:"relationship"`
 }
 
 // BuildSession validates and binds independently acquired evidence into one
