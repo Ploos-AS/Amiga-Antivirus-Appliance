@@ -72,8 +72,8 @@ func daemonCommand(args []string) {
 	defer cancel()
 
 	server := &http.Server{
-		Addr: *listen,
-		Handler: apihttp.NewHandlerWithSubmission(history, version, apihttp.SubmissionConfig{
+		Addr:              *listen,
+		Handler:           apihttp.NewHandlerWithSubmission(history, version, apihttp.SubmissionConfig{
 			Submitter:      manager,
 			IncomingRoot:  *incomingRoot,
 			MaxUploadBytes: *maxUploadBytes,
