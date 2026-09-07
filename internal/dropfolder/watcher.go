@@ -15,6 +15,7 @@ type SubmitFunc func(path string) error
 type Watcher struct {
 	Root         string
 	IncomingRoot string
+	ReceiptPath  string
 	PollInterval time.Duration
 	StableFor    time.Duration
 	MaxBytes     int64
@@ -36,11 +37,20 @@ func (w Watcher) Run(ctx context.Context) error {
 		return fmt.Errorf("create drop root: %w", err)
 	}
 
+	var receipts *ReceiptStore
+	if w.ReceiptPath != "" {
+		var err error
+		receipts, err = OpenReceiptStore(w.ReceiptPath)
+		if err != nil {
+			return err
+		}
+	}
+
 	observed := make(map[string]observation)
 	ticker := time.NewTicker(w.PollInterval)
 	defer ticker.Stop()
 
-	if err := w.poll(time.Now().UTC(), observed); err != nil {
+	if err := w.poll(time.Now().UTC(), observed, receipts); err != nil {
 		return err
 	}
 	for {
@@ -48,14 +58,14 @@ func (w Watcher) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case now := <-ticker.C:
-			if err := w.poll(now.UTC(), observed); err != nil {
+			if err := w.poll(now.UTC(), observed, receipts); err != nil {
 				return err
 			}
 		}
 	}
 }
 
-func (w Watcher) poll(now time.Time, observed map[string]observation) error {
+func (w Watcher) poll(now time.Time, observed map[string]observation, receipts *ReceiptStore) error {
 	entries, err := os.ReadDir(w.Root)
 	if err != nil {
 		return fmt.Errorf("read drop root: %w", err)
@@ -91,9 +101,20 @@ func (w Watcher) poll(now time.Time, observed map[string]observation) error {
 			}
 			return fmt.Errorf("stage drop file %q: %w", name, err)
 		}
+
+		if receipts != nil && receipts.Matches(name, snapshot) {
+			previous.handled = true
+			observed[name] = previous
+			continue
+		}
 		if err := w.Submit(snapshot.Path); err != nil {
 			// Keep the observation unhandled so a transient full queue is retried.
 			continue
+		}
+		if receipts != nil {
+			if err := receipts.Record(name, snapshot); err != nil {
+				return fmt.Errorf("record drop receipt %q: %w", name, err)
+			}
 		}
 		previous.handled = true
 		observed[name] = previous
@@ -102,6 +123,11 @@ func (w Watcher) poll(now time.Time, observed map[string]observation) error {
 	for name := range observed {
 		if _, ok := present[name]; !ok {
 			delete(observed, name)
+		}
+	}
+	if receipts != nil {
+		if err := receipts.Prune(present); err != nil {
+			return fmt.Errorf("prune drop receipts: %w", err)
 		}
 	}
 	return nil
