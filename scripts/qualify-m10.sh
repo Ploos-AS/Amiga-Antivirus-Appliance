@@ -64,7 +64,7 @@ else
     bad 'Web UI index is unavailable or unexpected'
 fi
 
-if printf '%s' "$index" | grep -q 'Operational overview' && printf '%s' "$index" | grep -q 'Engine health'; then
+if printf '%s' "$index" | grep -q 'Operational dashboard' && printf '%s' "$index" | grep -q 'Engine health'; then
     ok 'M10.4 dashboard sections are present'
 else
     bad 'operational dashboard sections are missing'
@@ -117,11 +117,11 @@ else
     bad 'scan history endpoint is unavailable'
 fi
 
+note 'manual browser/visual qualification is still required before appliance-qualified status'
 printf '\nQualification summary: PASS=%d FAIL=%d WARN=%d\n' "$pass" "$fail" "$warn"
 
 if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 
-note 'manual browser/visual qualification is still required before appliance-qualified status'
 printf 'M10 automated runtime checks passed.\n'
