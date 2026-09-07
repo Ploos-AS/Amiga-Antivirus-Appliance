@@ -15,6 +15,7 @@ import (
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/daemon"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanhistory"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanner"
+	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/webui"
 )
 
 const (
@@ -71,13 +72,14 @@ func daemonCommand(args []string) {
 	ctx, cancel := context.WithCancel(signalCtx)
 	defer cancel()
 
+	apiHandler := apihttp.NewHandlerWithSubmission(history, version, apihttp.SubmissionConfig{
+		Submitter:      manager,
+		IncomingRoot:   *incomingRoot,
+		MaxUploadBytes: *maxUploadBytes,
+	})
 	server := &http.Server{
-		Addr: *listen,
-		Handler: apihttp.NewHandlerWithSubmission(history, version, apihttp.SubmissionConfig{
-			Submitter:      manager,
-			IncomingRoot:   *incomingRoot,
-			MaxUploadBytes: *maxUploadBytes,
-		}),
+		Addr:              *listen,
+		Handler:           webui.New(apiHandler),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       5 * time.Minute,
 		WriteTimeout:      30 * time.Second,
