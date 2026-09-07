@@ -2,7 +2,7 @@
 
 ## Status
 
-**Code qualification: pending final M10.5 CI gate**  
+**Code qualification: PASS**  
 **Reference-appliance runtime qualification: pending Orange Pi Zero 3 / DietPi hardware**  
 **Manual browser / visual qualification: pending reference appliance**
 
@@ -17,32 +17,35 @@ This document is the roll-up qualification record for M10. The individual implem
 | M10.2 | Common attributed engine-evidence model and history replay | CI-qualified |
 | M10.3 | Per-engine cards, provenance and disagreement display | CI-qualified |
 | M10.4 | Operational dashboard and observed engine-health view | CI-qualified |
-| M10.5 | Completion gate, automated target qualifier and qualification roll-up | final CI pending |
+| M10.5 | Completion gate, automated target qualifier and qualification roll-up | CI-qualified |
 
-Known green milestone heads before M10.5:
+Known green milestone heads:
 
 - M10.0: `cd64fdb08e9118417448da3c186a48006d1cb944` — CI #339 green.
 - M10.1: `3b1cb056b9a67f11390e5d650db18544dab4c611` — CI #342 green.
 - M10.2: `efa16d863c1a6ea7520bb16c1b0e89458b272ac2` — CI #354 green.
 - M10.3: `98a558e929240a0b4cfd29ef14884055e7d44108` — CI #357 green.
 - M10.4: `d082d089efae156f9a2ee37237ac59d953ca8edc` — CI #360 green.
+- M10.5 implementation gate: `1985fc344e3ec0dade0f1e5f224457220a2e6c3d` — CI #365 green.
+
+CI #365 / run `34118774469` completed successfully on the exact M10.5 implementation head. The subsequent README/status synchronization is documentation-only and does not change the M10 executable, UI assets, runtime qualifier, tests or CI workflow.
 
 ## Final code qualification gate
 
-The final M10.5 HEAD must pass the complete repository CI workflow:
+The M10.5 implementation head passed the complete repository CI workflow:
 
-- research manifest validation;
-- `gofmt` cleanliness;
-- appliance shell syntax, including `scripts/qualify-m10.sh`;
-- M9.5 systemd unit verification;
-- `go mod tidy -diff`;
-- `go vet ./...`;
-- `go test ./...` including all M10 Web UI regression tests;
-- AmiGuard compatibility validation;
-- linux/amd64 build;
-- linux/arm64 build.
+- research manifest validation — PASS;
+- `gofmt` cleanliness — PASS;
+- appliance shell syntax, including `scripts/qualify-m10.sh` — PASS;
+- M9.5 systemd unit verification — PASS;
+- `go mod tidy -diff` — PASS;
+- `go vet ./...` — PASS;
+- `go test ./...` including all M10 Web UI regression tests — PASS;
+- AmiGuard compatibility validation — PASS;
+- linux/amd64 build — PASS;
+- linux/arm64 build — PASS.
 
-When this gate is green, update this document to record the exact M10.5 HEAD and CI run and mark M10 **code-qualified**.
+Therefore M10 is **code-qualified**.
 
 ## Reference-appliance runtime gate
 
