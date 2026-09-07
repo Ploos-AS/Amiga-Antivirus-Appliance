@@ -23,8 +23,7 @@ const (
 	StateCanceled  State = "canceled"
 )
 
-// Job is the in-memory M9.0 representation of one submitted scan.
-// Persistent history is introduced separately in M9.1.
+// Job is the daemon representation of one submitted scan.
 type Job struct {
 	ID          string          `json:"id"`
 	Path        string          `json:"path"`
@@ -39,19 +38,30 @@ type Job struct {
 // ScanFunc is the scanner boundary used by the daemon worker pool.
 type ScanFunc func(path string) (scanner.Result, error)
 
-// Manager owns the bounded worker pool and in-memory job lifecycle.
+// Recorder persists job snapshots as the lifecycle advances.
+type Recorder interface {
+	Record(Job) error
+}
+
+// Manager owns the bounded worker pool and job lifecycle.
 type Manager struct {
-	workers int
-	scan    ScanFunc
-	queue   chan string
+	workers  int
+	scan     ScanFunc
+	recorder Recorder
+	queue    chan string
+	errors   chan error
 
 	mu   sync.RWMutex
 	jobs map[string]Job
 }
 
-// New creates a daemon manager. The queue is deliberately bounded to avoid
-// unbounded memory growth before M9 adds the network-facing submission API.
+// New creates an in-memory daemon manager.
 func New(workers, queueDepth int, scan ScanFunc) (*Manager, error) {
+	return NewWithRecorder(workers, queueDepth, scan, nil)
+}
+
+// NewWithRecorder creates a daemon manager with optional persistent history.
+func NewWithRecorder(workers, queueDepth int, scan ScanFunc, recorder Recorder) (*Manager, error) {
 	if workers < 1 {
 		return nil, errors.New("workers must be at least 1")
 	}
@@ -62,10 +72,12 @@ func New(workers, queueDepth int, scan ScanFunc) (*Manager, error) {
 		return nil, errors.New("scan function is required")
 	}
 	return &Manager{
-		workers: workers,
-		scan:    scan,
-		queue:   make(chan string, queueDepth),
-		jobs:    make(map[string]Job),
+		workers:  workers,
+		scan:     scan,
+		recorder: recorder,
+		queue:    make(chan string, queueDepth),
+		errors:   make(chan error, 1),
+		jobs:     make(map[string]Job),
 	}, nil
 }
 
@@ -88,6 +100,12 @@ func (m *Manager) Submit(path string) (Job, error) {
 	m.mu.Lock()
 	m.jobs[id] = job
 	m.mu.Unlock()
+	if err := m.record(job); err != nil {
+		m.mu.Lock()
+		delete(m.jobs, id)
+		m.mu.Unlock()
+		return Job{}, err
+	}
 
 	select {
 	case m.queue <- id:
@@ -108,21 +126,29 @@ func (m *Manager) Job(id string) (Job, bool) {
 	return job, ok
 }
 
-// Run executes workers until ctx is canceled, then marks work which never
-// started as canceled and returns after all active workers have stopped.
-func (m *Manager) Run(ctx context.Context) {
+// Run executes workers until ctx is canceled or persistent history fails.
+func (m *Manager) Run(ctx context.Context) error {
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	var wg sync.WaitGroup
 	for i := 0; i < m.workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			m.worker(ctx)
+			m.worker(workerCtx)
 		}()
 	}
 
-	<-ctx.Done()
+	var runErr error
+	select {
+	case <-ctx.Done():
+	case runErr = <-m.errors:
+		cancel()
+	}
 	wg.Wait()
 	m.cancelPending()
+	return runErr
 }
 
 func (m *Manager) worker(ctx context.Context) {
@@ -148,12 +174,15 @@ func (m *Manager) execute(id string) {
 	job.StartedAt = &started
 	m.jobs[id] = job
 	m.mu.Unlock()
+	if err := m.record(job); err != nil {
+		m.reportError(err)
+		return
+	}
 
 	result, err := m.scan(job.Path)
 	finished := time.Now().UTC()
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	job = m.jobs[id]
 	job.FinishedAt = &finished
 	if err != nil {
@@ -164,12 +193,16 @@ func (m *Manager) execute(id string) {
 		job.Result = &result
 	}
 	m.jobs[id] = job
+	m.mu.Unlock()
+	if err := m.record(job); err != nil {
+		m.reportError(err)
+	}
 }
 
 func (m *Manager) cancelPending() {
 	now := time.Now().UTC()
+	var canceled []Job
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	for id, job := range m.jobs {
 		if job.State != StatePending {
 			continue
@@ -177,6 +210,30 @@ func (m *Manager) cancelPending() {
 		job.State = StateCanceled
 		job.FinishedAt = &now
 		m.jobs[id] = job
+		canceled = append(canceled, job)
+	}
+	m.mu.Unlock()
+	for _, job := range canceled {
+		if err := m.record(job); err != nil {
+			m.reportError(err)
+		}
+	}
+}
+
+func (m *Manager) record(job Job) error {
+	if m.recorder == nil {
+		return nil
+	}
+	if err := m.recorder.Record(job); err != nil {
+		return fmt.Errorf("persist scan history: %w", err)
+	}
+	return nil
+}
+
+func (m *Manager) reportError(err error) {
+	select {
+	case m.errors <- err:
+	default:
 	}
 }
 
