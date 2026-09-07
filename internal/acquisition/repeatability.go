@@ -6,17 +6,17 @@ import (
 )
 
 const (
-	RepeatabilityInsufficient  = "insufficient"
-	RepeatabilityReproducible  = "reproducible"
-	RepeatabilityDivergent     = "divergent"
+	RepeatabilityInsufficient = "insufficient"
+	RepeatabilityReproducible = "reproducible"
+	RepeatabilityDivergent    = "divergent"
 )
 
 // Repeatability summarizes whether multiple physical-media reads produced the same image hash.
 type Repeatability struct {
-	Status       string            `json:"status"`
-	ReadCount    int               `json:"read_count"`
-	UniqueHashes int               `json:"unique_hashes"`
-	Hashes       map[string]int    `json:"hashes"`
+	Status       string              `json:"status"`
+	ReadCount    int                 `json:"read_count"`
+	UniqueHashes int                 `json:"unique_hashes"`
+	Hashes       map[string]int      `json:"hashes"`
 	Reads        []RepeatabilityRead `json:"reads"`
 }
 
