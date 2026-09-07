@@ -111,10 +111,18 @@ func (m *Manager) Submit(path string) (Job, error) {
 	case m.queue <- id:
 		return job, nil
 	default:
+		finished := time.Now().UTC()
+		job.State = StateCanceled
+		job.FinishedAt = &finished
+		job.Error = "scan queue is full"
 		m.mu.Lock()
-		delete(m.jobs, id)
+		m.jobs[id] = job
 		m.mu.Unlock()
-		return Job{}, errors.New("scan queue is full")
+		if err := m.record(job); err != nil {
+			m.reportError(err)
+			return job, fmt.Errorf("scan queue is full; persist rejected scan: %w", err)
+		}
+		return job, errors.New("scan queue is full")
 	}
 }
 
