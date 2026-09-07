@@ -1,0 +1,33 @@
+[Unit]
+Description=AAA - Amiga AntiVirus Appliance daemon
+After=local-fs.target network.target
+ConditionPathIsDirectory=/data/aaa
+
+[Service]
+Type=simple
+User=aaa
+Group=aaa
+EnvironmentFile=-/etc/default/aaa
+ExecStart=/usr/local/bin/aaa daemon
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+UMask=0027
+ReadWritePaths=/data/aaa
+
+[Install]
+WantedBy=multi-user.target
