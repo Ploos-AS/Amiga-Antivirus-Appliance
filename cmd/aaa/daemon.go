@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -84,9 +85,11 @@ func daemonCommand(args []string) {
 		os.Exit(2)
 	}
 
+	dropReceiptPath := filepath.Join(*stateRoot, "drop-ingest.json")
 	dropWatcher := dropfolder.Watcher{
 		Root:         *dropRoot,
 		IncomingRoot: *incomingRoot,
+		ReceiptPath:  dropReceiptPath,
 		PollInterval: *dropPoll,
 		StableFor:    *dropStable,
 		MaxBytes:     *maxUploadBytes,
@@ -129,7 +132,7 @@ func daemonCommand(args []string) {
 		serverDone <- err
 	}()
 
-	fmt.Fprintf(os.Stderr, "AAA daemon started workers=%d queue-depth=%d history=%s incoming=%s drop=%s drop-poll=%s drop-stable=%s max-input-bytes=%d api=%s allow-remote=%t\n", *workers, *queueDepth, history.Path(), *incomingRoot, *dropRoot, *dropPoll, *dropStable, *maxUploadBytes, *listen, *allowRemote)
+	fmt.Fprintf(os.Stderr, "AAA daemon started workers=%d queue-depth=%d history=%s incoming=%s drop=%s drop-receipts=%s drop-poll=%s drop-stable=%s max-input-bytes=%d api=%s allow-remote=%t\n", *workers, *queueDepth, history.Path(), *incomingRoot, *dropRoot, dropReceiptPath, *dropPoll, *dropStable, *maxUploadBytes, *listen, *allowRemote)
 
 	var runErr error
 	managerFinished := false
