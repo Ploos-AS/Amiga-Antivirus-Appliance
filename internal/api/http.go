@@ -28,7 +28,7 @@ type Submitter interface {
 
 type SubmissionConfig struct {
 	Submitter      Submitter
-	IncomingRoot  string
+	IncomingRoot   string
 	MaxUploadBytes int64
 }
 
