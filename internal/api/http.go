@@ -276,7 +276,7 @@ func (h *Handler) scanRoute(w http.ResponseWriter, path string) {
 			writeJSON(w, http.StatusConflict, errorResponse{Error: "scan result not available"})
 			return
 		}
-		writeJSON(w, http.StatusOK, job.Result)
+		writeJSON(w, http.StatusOK, resultResponseFrom(*job.Result))
 		return
 	}
 	writeJSON(w, http.StatusOK, summarize(job))
