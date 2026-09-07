@@ -18,24 +18,20 @@ import (
 
 const defaultMaxUploadBytes int64 = 256 * 1024 * 1024
 
-// HistoryReader supplies the latest persisted snapshot for each scan job.
 type HistoryReader interface {
 	LoadLatest() ([]daemon.Job, error)
 }
 
-// Submitter accepts a fully ingested file path for scanning.
 type Submitter interface {
 	Submit(path string) (daemon.Job, error)
 }
 
-// SubmissionConfig enables the M9.3 upload endpoint.
 type SubmissionConfig struct {
 	Submitter      Submitter
-	IncomingRoot  string
+	IncomingRoot   string
 	MaxUploadBytes int64
 }
 
-// Handler exposes the M9 HTTP API.
 type Handler struct {
 	history        HistoryReader
 	version        string
@@ -44,14 +40,10 @@ type Handler struct {
 	maxUploadBytes int64
 }
 
-// NewHandler creates the read-only M9.2 API handler.
 func NewHandler(history HistoryReader, version string) http.Handler {
 	return &Handler{history: history, version: version}
 }
 
-// NewHandlerWithSubmission creates the M9.3 API handler with controlled upload
-// ingestion. The caller chooses the incoming root; clients never supply a host
-// filesystem path.
 func NewHandlerWithSubmission(history HistoryReader, version string, cfg SubmissionConfig) http.Handler {
 	limit := cfg.MaxUploadBytes
 	if limit <= 0 {
@@ -69,16 +61,13 @@ func NewHandlerWithSubmission(history HistoryReader, version string, cfg Submiss
 type errorResponse struct {
 	Error string `json:"error"`
 }
-
 type healthResponse struct {
 	Status string `json:"status"`
 }
-
 type versionResponse struct {
 	Version    string `json:"version"`
 	APIVersion string `json:"api_version"`
 }
-
 type scanResponse struct {
 	ID          string       `json:"id"`
 	State       daemon.State `json:"state"`
@@ -87,7 +76,6 @@ type scanResponse struct {
 	FinishedAt  *time.Time   `json:"finished_at,omitempty"`
 	Error       string       `json:"error,omitempty"`
 }
-
 type submitResponse struct {
 	ID        string       `json:"id"`
 	State     daemon.State `json:"state"`
@@ -99,7 +87,6 @@ type submitResponse struct {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-
 	if r.URL.Path == "/api/v1/scans" && r.Method == http.MethodPost && h.submissionEnabled() {
 		h.submitScan(w, r)
 		return
@@ -113,7 +100,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
 		return
 	}
-
 	switch r.URL.Path {
 	case "/healthz":
 		writeJSON(w, http.StatusOK, healthResponse{Status: "ok"})
@@ -125,29 +111,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.scanRoute(w, r.URL.Path)
 	}
 }
-
-func (h *Handler) submissionEnabled() bool {
-	return h.submitter != nil && h.incomingRoot != ""
-}
-
+func (h *Handler) submissionEnabled() bool { return h.submitter != nil && h.incomingRoot != "" }
 func (h *Handler) submitScan(w http.ResponseWriter, r *http.Request) {
 	name, err := safeUploadName(r.Header.Get("X-AAA-Filename"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid upload filename"})
+		writeJSON(w, 400, errorResponse{Error: "invalid upload filename"})
 		return
 	}
 	if r.ContentLength > h.maxUploadBytes {
-		writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: "upload too large"})
+		writeJSON(w, 413, errorResponse{Error: "upload too large"})
 		return
 	}
-	if err := os.MkdirAll(h.incomingRoot, 0o750); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "incoming storage unavailable"})
+	if err := os.MkdirAll(h.incomingRoot, 0750); err != nil {
+		writeJSON(w, 500, errorResponse{Error: "incoming storage unavailable"})
 		return
 	}
-
 	tmp, err := os.CreateTemp(h.incomingRoot, ".upload-*")
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "incoming storage unavailable"})
+		writeJSON(w, 500, errorResponse{Error: "incoming storage unavailable"})
 		return
 	}
 	tmpPath := tmp.Name()
@@ -158,30 +139,28 @@ func (h *Handler) submitScan(w http.ResponseWriter, r *http.Request) {
 			_ = os.Remove(tmpPath)
 		}
 	}()
-
 	hash := sha256.New()
 	n, copyErr := io.Copy(io.MultiWriter(tmp, hash), io.LimitReader(r.Body, h.maxUploadBytes+1))
 	if copyErr != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "upload failed"})
+		writeJSON(w, 400, errorResponse{Error: "upload failed"})
 		return
 	}
 	if n > h.maxUploadBytes {
-		writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: "upload too large"})
+		writeJSON(w, 413, errorResponse{Error: "upload too large"})
 		return
 	}
 	if n == 0 {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "empty upload"})
+		writeJSON(w, 400, errorResponse{Error: "empty upload"})
 		return
 	}
 	if err := tmp.Sync(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "incoming storage unavailable"})
+		writeJSON(w, 500, errorResponse{Error: "incoming storage unavailable"})
 		return
 	}
 	if err := tmp.Close(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "incoming storage unavailable"})
+		writeJSON(w, 500, errorResponse{Error: "incoming storage unavailable"})
 		return
 	}
-
 	digest := hex.EncodeToString(hash.Sum(nil))
 	target := filepath.Join(h.incomingRoot, digest+"-"+name)
 	duplicate := false
@@ -189,30 +168,22 @@ func (h *Handler) submitScan(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, os.ErrExist) {
 			duplicate = true
 		} else {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "incoming storage unavailable"})
+			writeJSON(w, 500, errorResponse{Error: "incoming storage unavailable"})
 			return
 		}
 	}
 	if err := os.Remove(tmpPath); err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "incoming storage unavailable"})
+		writeJSON(w, 500, errorResponse{Error: "incoming storage unavailable"})
 		return
 	}
 	removeTemp = false
-
 	job, err := h.submitter.Submit(target)
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "scan queue unavailable"})
+		writeJSON(w, 503, errorResponse{Error: "scan queue unavailable"})
 		return
 	}
-	writeJSON(w, http.StatusAccepted, submitResponse{
-		ID:        job.ID,
-		State:     job.State,
-		SHA256:    digest,
-		Size:      n,
-		Duplicate: duplicate,
-	})
+	writeJSON(w, 202, submitResponse{ID: job.ID, State: job.State, SHA256: digest, Size: n, Duplicate: duplicate})
 }
-
 func safeUploadName(value string) (string, error) {
 	name := strings.TrimSpace(value)
 	if name == "" {
@@ -223,32 +194,29 @@ func safeUploadName(value string) (string, error) {
 	}
 	return name, nil
 }
-
 func (h *Handler) listScans(w http.ResponseWriter) {
 	jobs, err := h.history.LoadLatest()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan history unavailable"})
+		writeJSON(w, 500, errorResponse{Error: "scan history unavailable"})
 		return
 	}
 	out := make([]scanResponse, 0, len(jobs))
 	for _, job := range jobs {
 		out = append(out, summarize(job))
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, 200, out)
 }
-
 func (h *Handler) scanRoute(w http.ResponseWriter, path string) {
 	const prefix = "/api/v1/scans/"
 	if !strings.HasPrefix(path, prefix) {
-		writeJSON(w, http.StatusNotFound, errorResponse{Error: "not found"})
+		writeJSON(w, 404, errorResponse{Error: "not found"})
 		return
 	}
 	rest := strings.TrimPrefix(path, prefix)
 	if rest == "" || strings.Contains(rest, "//") {
-		writeJSON(w, http.StatusNotFound, errorResponse{Error: "not found"})
+		writeJSON(w, 404, errorResponse{Error: "not found"})
 		return
 	}
-
 	id := rest
 	results := false
 	if strings.HasSuffix(rest, "/results") {
@@ -256,29 +224,27 @@ func (h *Handler) scanRoute(w http.ResponseWriter, path string) {
 		results = true
 	}
 	if id == "" || strings.Contains(id, "/") {
-		writeJSON(w, http.StatusNotFound, errorResponse{Error: "not found"})
+		writeJSON(w, 404, errorResponse{Error: "not found"})
 		return
 	}
-
 	job, err := h.findJob(id)
 	if errors.Is(err, errNotFound) {
-		writeJSON(w, http.StatusNotFound, errorResponse{Error: "scan not found"})
+		writeJSON(w, 404, errorResponse{Error: "scan not found"})
 		return
 	}
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan history unavailable"})
+		writeJSON(w, 500, errorResponse{Error: "scan history unavailable"})
 		return
 	}
-
 	if results {
 		if job.Result == nil {
-			writeJSON(w, http.StatusConflict, errorResponse{Error: "scan result not available"})
+			writeJSON(w, 409, errorResponse{Error: "scan result not available"})
 			return
 		}
-		writeJSON(w, http.StatusOK, job.Result)
+		writeJSON(w, 200, job.Result)
 		return
 	}
-	writeJSON(w, http.StatusOK, summarize(job))
+	writeJSON(w, 200, summarize(job))
 }
 
 var errNotFound = errors.New("scan not found")
@@ -295,18 +261,9 @@ func (h *Handler) findJob(id string) (daemon.Job, error) {
 	}
 	return daemon.Job{}, errNotFound
 }
-
 func summarize(job daemon.Job) scanResponse {
-	return scanResponse{
-		ID:          job.ID,
-		State:       job.State,
-		SubmittedAt: job.SubmittedAt,
-		StartedAt:   job.StartedAt,
-		FinishedAt:  job.FinishedAt,
-		Error:       job.Error,
-	}
+	return scanResponse{ID: job.ID, State: job.State, SubmittedAt: job.SubmittedAt, StartedAt: job.StartedAt, FinishedAt: job.FinishedAt, Error: job.Error}
 }
-
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
