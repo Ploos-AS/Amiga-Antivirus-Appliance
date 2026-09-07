@@ -61,7 +61,9 @@ func daemonCommand(args []string) {
 		os.Exit(1)
 	}
 
-	manager, err := daemon.NewWithRecorder(*workers, *queueDepth, scanner.ScanFile, history)
+	manager, err := daemon.NewWithRecorder(*workers, *queueDepth, func(path string) (scanner.Result, error) {
+		return scanForDaemon(path)
+	}, history)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon configuration failed: %v\n", err)
 		os.Exit(2)
