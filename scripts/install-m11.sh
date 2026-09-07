@@ -13,10 +13,10 @@ fail() { echo "ERROR: $*" >&2; exit 1; }
 command -v apt-get >/dev/null 2>&1 || fail "apt-get is required on the reference appliance"
 id aaa >/dev/null 2>&1 || fail "AAA daemon user is missing; install M9.5 first"
 
-if ! command -v smbd >/dev/null 2>&1 || ! command -v testparm >/dev/null 2>&1 || ! command -v smbpasswd >/dev/null 2>&1; then
+if ! command -v smbd >/dev/null 2>&1 || ! command -v testparm >/dev/null 2>&1 || ! command -v smbpasswd >/dev/null 2>&1 || ! command -v smbclient >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
-    apt-get install -y samba
+    apt-get install -y samba smbclient
 fi
 
 if ! getent group "$SMB_GROUP" >/dev/null 2>&1; then
@@ -58,7 +58,7 @@ systemctl restart smbd.service
 systemctl restart aaa.service
 
 echo "AAA M11.2 Samba drop-folder integration installed."
-echo "Share: \\\\\\$(hostname)\\aaa-drop"
+echo "Share: \\\\$(hostname)\\aaa-drop"
 echo "Path:  $DROP_ROOT"
 echo "User:  $SMB_USER"
 echo "Run: sudo ./scripts/qualify-m11.sh"
