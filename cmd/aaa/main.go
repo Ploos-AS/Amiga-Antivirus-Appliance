@@ -22,6 +22,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "AAA — Amiga AntiVirus Appliance\n\n")
 	fmt.Fprintf(os.Stderr, "Usage:\n")
 	fmt.Fprintf(os.Stderr, "  aaa scan [--json] [--clamav] <file>\n")
+	fmt.Fprintf(os.Stderr, "  aaa daemon [--workers <n>] [--queue-depth <n>]\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures candidates [--json]\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures validate\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures promote [--validation <result.json>] <id>\n")
@@ -48,6 +49,8 @@ func main() {
 	switch os.Args[1] {
 	case "scan":
 		scanCommand(os.Args[2:])
+	case "daemon":
+		daemonCommand(os.Args[2:])
 	case "signatures":
 		signaturesCommand(os.Args[2:])
 	case "version", "--version", "-version":
