@@ -42,6 +42,7 @@ aaa version
 - **M8** — isolated historical Amiga scanner adapters, provenance, consensus/evidence aggregation and M8.7 support-component identity: implemented and code-qualified; real emulator/scanner appliance runtime qualification pending.
 - **M9** — daemon, persistent scan history, REST API, upload pipeline, hardening and production systemd integration: implemented and code-qualified; reference-appliance service/reboot qualification pending.
 - **M10** — embedded Web UI, structured results, attributed engine cards, disagreement display and operational dashboard: implementation complete through M10.5; code qualification is tracked in `docs/M10_QUALIFICATION.md`, while Orange Pi runtime and visible browser qualification remain separate hardware gates.
+- **M11** — secure SMB drop-folder workflow, stable-file ingest, immutable staging, daemon watcher, restart-safe ingest receipts and authenticated Samba appliance integration: implementation complete through M11.2 and code-qualified; Orange Pi/DietPi authenticated runtime qualification remains pending. See `docs/M11_QUALIFICATION.md`.
 
 M3 can declare an ADF `infected` when its bootblock exactly matches a known-malicious entry. A known-clean bootblock does not make the whole disk clean, because other malware may be present elsewhere in the disk image.
 
@@ -86,7 +87,7 @@ M6.4 extends scanning to preservation formats IPF and FDI through bounded option
 
 M7 adds the local Signature Factory. Confirmed `infected` results can produce reviewable candidates under `/data/aaa/signatures` without automatic promotion or publication. Candidate writes are deterministic and conflict-safe, archive-member infections are attributed to the member rather than only the outer container, and malicious bootblock candidates retain both the containing sample hash and exact bootblock hash. Operators can validate, promote, reject, export and distribute explicitly qualified signatures.
 
-M9 adds the long-running `aaa daemon`, append-only persistent scan history, localhost REST API, bounded HTTP upload ingestion and production systemd integration. M10 serves a same-origin Web UI from the same daemon process with no Node.js runtime, CDN or external frontend assets. See `docs/M9_5_SPEC.md`, `docs/M10_5_SPEC.md` and `docs/M10_QUALIFICATION.md`.
+M9 adds the long-running `aaa daemon`, append-only persistent scan history, localhost REST API, bounded HTTP upload ingestion and production systemd integration. M10 serves a same-origin Web UI from the same daemon process with no Node.js runtime, CDN or external frontend assets. M11 adds a dedicated authenticated SMB drop boundary whose stable files are staged into immutable controlled snapshots before entering the same daemon queue/history pipeline. See `docs/M9_5_SPEC.md`, `docs/M10_5_SPEC.md`, `docs/M10_QUALIFICATION.md`, `docs/M11_2_SPEC.md` and `docs/M11_QUALIFICATION.md`.
 
 Example fields:
 
@@ -107,6 +108,7 @@ M4 enumerates file and directory names, paths, and header-block numbers. M4.1 re
 
 ```text
 /data/aaa/
+├── drop/
 ├── incoming/
 ├── clean/
 ├── quarantine/
@@ -120,16 +122,18 @@ No submitted material is automatically deleted.
 
 ## Reference appliance installation and qualification
 
-When the reference hardware is available, M0 remains the foundation qualification. The production daemon is installed with the M9 installer and M10 adds its own HTTP/UI runtime gate:
+When the reference hardware is available, M0 remains the foundation qualification. The production daemon is installed with the M9 installer; M10 adds its HTTP/UI runtime gate and M11 adds the authenticated SMB drop-folder gate:
 
 ```sh
 sudo sh scripts/qualify-m0.sh
 sudo AAA_BINARY=./aaa-linux-arm64 sh scripts/install-m9.sh
 sudo sh scripts/qualify-m9.sh
 sudo sh scripts/qualify-m10.sh
+sudo AAA_SMB_PASSWORD_FILE=/root/aaa-smb-password sh scripts/install-m11.sh
+sudo AAA_SMB_PASSWORD_FILE=/root/aaa-smb-password sh scripts/qualify-m11.sh
 ```
 
-M10 is not fully appliance-qualified until the automated M10 runtime gate and the visible/manual browser checklist in `docs/M10_5_SPEC.md` have both passed on the Orange Pi Zero 3 / DietPi reference system.
+M10 is not fully appliance-qualified until the automated M10 runtime gate and the visible/manual browser checklist in `docs/M10_5_SPEC.md` have both passed on the Orange Pi Zero 3 / DietPi reference system. M11 is not appliance-qualified until its authenticated SMB3 end-to-end gate has passed on the same reference appliance.
 
 ## Development
 
@@ -159,7 +163,7 @@ The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/
 - M8 isolated emulated Amiga scanner engines and consensus
 - M9 daemon, REST API, scan history and appliance service integration
 - M10 Web UI — implementation complete; appliance runtime/visual qualification pending reference hardware
-- M11 SMB drop-folder workflow
+- M11 SMB drop-folder workflow — implementation complete; appliance runtime qualification pending reference hardware
 - M12 Greaseweazle integration
 
 ## License
