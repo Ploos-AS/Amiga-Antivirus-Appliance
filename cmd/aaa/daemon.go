@@ -2,18 +2,25 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	apihttp "github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/api"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/daemon"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanhistory"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanner"
 )
 
-const defaultStateRoot = "/data/aaa/state"
+const (
+	defaultStateRoot = "/data/aaa/state"
+	defaultListen    = "127.0.0.1:8080"
+)
 
 func daemonCommand(args []string) {
 	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
@@ -21,6 +28,7 @@ func daemonCommand(args []string) {
 	workers := fs.Int("workers", 1, "number of concurrent scan workers")
 	queueDepth := fs.Int("queue-depth", 32, "maximum number of queued scans")
 	stateRoot := fs.String("state-root", stateRootFromEnv(), "persistent daemon state directory")
+	listen := fs.String("listen", listenFromEnv(), "HTTP API listen address")
 	if err := fs.Parse(args); err != nil {
 		os.Exit(2)
 	}
@@ -45,12 +53,67 @@ func daemonCommand(args []string) {
 		os.Exit(2)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	ctx, cancel := context.WithCancel(signalCtx)
+	defer cancel()
 
-	fmt.Fprintf(os.Stderr, "AAA daemon started workers=%d queue-depth=%d history=%s\n", *workers, *queueDepth, history.Path())
-	if err := manager.Run(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "AAA daemon failed: %v\n", err)
+	server := &http.Server{
+		Addr:              *listen,
+		Handler:           apihttp.NewHandler(history, version),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	managerDone := make(chan error, 1)
+	go func() {
+		managerDone <- manager.Run(ctx)
+	}()
+	serverDone := make(chan error, 1)
+	go func() {
+		err := server.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		serverDone <- err
+	}()
+
+	fmt.Fprintf(os.Stderr, "AAA daemon started workers=%d queue-depth=%d history=%s api=%s\n", *workers, *queueDepth, history.Path(), *listen)
+
+	var runErr error
+	managerFinished := false
+	select {
+	case <-signalCtx.Done():
+		cancel()
+	case err := <-managerDone:
+		managerFinished = true
+		if err != nil {
+			runErr = fmt.Errorf("scan manager: %w", err)
+		}
+		cancel()
+	case err := <-serverDone:
+		if err != nil {
+			runErr = fmt.Errorf("HTTP API: %w", err)
+		}
+		cancel()
+	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := server.Shutdown(shutdownCtx); err != nil && runErr == nil {
+		runErr = fmt.Errorf("HTTP API shutdown: %w", err)
+	}
+	shutdownCancel()
+
+	if !managerFinished {
+		if err := <-managerDone; err != nil && runErr == nil {
+			runErr = fmt.Errorf("scan manager: %w", err)
+		}
+	}
+
+	if runErr != nil {
+		fmt.Fprintf(os.Stderr, "AAA daemon failed: %v\n", runErr)
 		os.Exit(1)
 	}
 	fmt.Fprintln(os.Stderr, "AAA daemon stopped")
@@ -61,4 +124,11 @@ func stateRootFromEnv() string {
 		return root
 	}
 	return defaultStateRoot
+}
+
+func listenFromEnv() string {
+	if listen := os.Getenv("AAA_LISTEN"); listen != "" {
+		return listen
+	}
+	return defaultListen
 }
