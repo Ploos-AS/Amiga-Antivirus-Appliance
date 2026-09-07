@@ -84,11 +84,18 @@ func Stage(candidate Candidate, incomingRoot string, maxBytes int64) (Snapshot, 
 		return Snapshot{}, err
 	}
 	defer source.Close()
-	info, err := source.Stat()
+	openInfo, err := source.Stat()
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if !info.Mode().IsRegular() || info.Size() != candidate.Size || !info.ModTime().Equal(candidate.ModTime) {
+	pathInfo, err := os.Lstat(candidate.Path)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("revalidate drop path: %w", err)
+	}
+	if !openInfo.Mode().IsRegular() || !pathInfo.Mode().IsRegular() || !os.SameFile(openInfo, pathInfo) {
+		return Snapshot{}, errors.New("drop file path changed before staging")
+	}
+	if openInfo.Size() != candidate.Size || !openInfo.ModTime().Equal(candidate.ModTime) {
 		return Snapshot{}, errors.New("drop file changed before staging")
 	}
 
