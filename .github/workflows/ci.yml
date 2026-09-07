@@ -26,6 +26,12 @@ jobs:
             printf 'gofmt required for:\n%s\n' "$files"
             exit 1
           fi
+      - name: M9.5 shell syntax
+        run: sh -n scripts/install-m9.sh scripts/qualify-m9.sh
+      - name: M9.5 systemd unit verification
+        run: |
+          sudo install -m 0755 /bin/true /usr/local/bin/aaa
+          systemd-analyze verify systemd/aaa-daemon.service
       - name: Module metadata check
         run: go mod tidy -diff
       - name: Vet
