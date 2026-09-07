@@ -14,7 +14,7 @@ func TestSecurityHeaders(t *testing.T) {
 	h.ServeHTTP(w, r)
 
 	for name, want := range map[string]string{
-		"Cache-Control":         "no-store",
+		"Cache-Control":          "no-store",
 		"X-Content-Type-Options": "nosniff",
 		"X-Frame-Options":        "DENY",
 		"Referrer-Policy":        "no-referrer",
