@@ -18,8 +18,10 @@ import (
 )
 
 const (
-	defaultStateRoot = "/data/aaa/state"
-	defaultListen    = "127.0.0.1:8080"
+	defaultStateRoot      = "/data/aaa/state"
+	defaultIncomingRoot   = "/data/aaa/incoming"
+	defaultListen         = "127.0.0.1:8080"
+	defaultMaxUploadBytes = int64(256 * 1024 * 1024)
 )
 
 func daemonCommand(args []string) {
@@ -28,12 +30,18 @@ func daemonCommand(args []string) {
 	workers := fs.Int("workers", 1, "number of concurrent scan workers")
 	queueDepth := fs.Int("queue-depth", 32, "maximum number of queued scans")
 	stateRoot := fs.String("state-root", stateRootFromEnv(), "persistent daemon state directory")
+	incomingRoot := fs.String("incoming-root", incomingRootFromEnv(), "controlled scan upload directory")
+	maxUploadBytes := fs.Int64("max-upload-bytes", defaultMaxUploadBytes, "maximum HTTP scan upload size in bytes")
 	listen := fs.String("listen", listenFromEnv(), "HTTP API listen address")
 	if err := fs.Parse(args); err != nil {
 		os.Exit(2)
 	}
 	if fs.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "daemon takes no positional arguments")
+		os.Exit(2)
+	}
+	if *maxUploadBytes < 1 {
+		fmt.Fprintln(os.Stderr, "max-upload-bytes must be at least 1")
 		os.Exit(2)
 	}
 
@@ -59,10 +67,14 @@ func daemonCommand(args []string) {
 	defer cancel()
 
 	server := &http.Server{
-		Addr:              *listen,
-		Handler:           apihttp.NewHandler(history, version),
+		Addr: *listen,
+		Handler: apihttp.NewHandlerWithSubmission(history, version, apihttp.SubmissionConfig{
+			Submitter:      manager,
+			IncomingRoot:  *incomingRoot,
+			MaxUploadBytes: *maxUploadBytes,
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
+		ReadTimeout:       5 * time.Minute,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
@@ -80,7 +92,7 @@ func daemonCommand(args []string) {
 		serverDone <- err
 	}()
 
-	fmt.Fprintf(os.Stderr, "AAA daemon started workers=%d queue-depth=%d history=%s api=%s\n", *workers, *queueDepth, history.Path(), *listen)
+	fmt.Fprintf(os.Stderr, "AAA daemon started workers=%d queue-depth=%d history=%s incoming=%s max-upload-bytes=%d api=%s\n", *workers, *queueDepth, history.Path(), *incomingRoot, *maxUploadBytes, *listen)
 
 	var runErr error
 	managerFinished := false
@@ -124,6 +136,13 @@ func stateRootFromEnv() string {
 		return root
 	}
 	return defaultStateRoot
+}
+
+func incomingRootFromEnv() string {
+	if root := os.Getenv("AAA_INCOMING_ROOT"); root != "" {
+		return root
+	}
+	return defaultIncomingRoot
 }
 
 func listenFromEnv() string {
