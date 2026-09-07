@@ -4,6 +4,16 @@ AAA is a preservation-oriented malware scanning appliance for Commodore Amiga so
 
 Reference target: Orange Pi Zero 3 running DietPi (ARM64). The core scanner is portable and is developed/tested independently of the appliance hardware. Raspberry Pi and other ARM64 Debian-family systems are portability targets; Orange Pi Zero 3 remains the reference appliance.
 
+## Website and malware samples
+
+Project website: **https://ploos-as.github.io/Amiga-Antivirus-Appliance/**
+
+AAA benefits from authentic historical Amiga malware samples so detections and signature candidates can be backed by real evidence rather than guessed fingerprints. The shared Ploos-AS sample-intake project is **AmiGuard**:
+
+**https://ploos-as.github.io/AmiGuard/**
+
+Please preserve suspected samples unchanged and follow the instructions on the AmiGuard page. **Do not attach malware to GitHub issues, pull requests, discussions, or repository commits.** A submitted artifact is research material until it has been independently analyzed and qualified; submission alone does not make it a verified malware sample.
+
 ## Command name
 
 The project, product, and public CLI are all named **AAA**:
@@ -43,6 +53,7 @@ aaa version
 - **M9** — daemon, persistent scan history, REST API, upload pipeline, hardening and production systemd integration: implemented and code-qualified; reference-appliance service/reboot qualification pending.
 - **M10** — embedded Web UI, structured results, attributed engine cards, disagreement display and operational dashboard: implementation complete through M10.5; code qualification is tracked in `docs/M10_QUALIFICATION.md`, while Orange Pi runtime and visible browser qualification remain separate hardware gates.
 - **M11** — secure SMB drop-folder workflow, stable-file ingest, immutable staging, daemon watcher, restart-safe ingest receipts and authenticated Samba appliance integration: implementation complete through M11.2 and code-qualified; Orange Pi/DietPi authenticated runtime qualification remains pending. See `docs/M11_QUALIFICATION.md`.
+- **M12.0–M12.3** — Greaseweazle acquisition foundation, hash-bound `aaa acquire`, multi-read repeatability classification and raw SCP flux-preservation boundary: implemented and code-qualified with deterministic fake-`gw` coverage; real Greaseweazle/drive/media qualification remains pending reference hardware.
 
 M3 can declare an ADF `infected` when its bootblock exactly matches a known-malicious entry. A known-clean bootblock does not make the whole disk clean, because other malware may be present elsewhere in the disk image.
 
@@ -164,7 +175,7 @@ The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/
 - M9 daemon, REST API, scan history and appliance service integration
 - M10 Web UI — implementation complete; appliance runtime/visual qualification pending reference hardware
 - M11 SMB drop-folder workflow — implementation complete; appliance runtime qualification pending reference hardware
-- M12 Greaseweazle integration
+- M12 Greaseweazle integration — implemented through M12.3; hardware/runtime qualification and session linkage remain
 
 ## License
 
