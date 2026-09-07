@@ -15,7 +15,7 @@ func TestIdentifyFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if component.SHA256 != "195be21d1f39f23e7d1b769259ce4db4a2af63115870b82a48507a5381a4e1df" {
+	if component.SHA256 != "714b204016164451c5430f19e44e3a66f6a841f1f2088e0c0662fea9a5671d39" {
 		t.Fatalf("unexpected SHA-256 %q", component.SHA256)
 	}
 }
