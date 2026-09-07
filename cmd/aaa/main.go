@@ -25,6 +25,8 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  aaa acquire [--json] [--device <device>] [--gw <path>] [--timeout <duration>] [--reads <n>] [--repeatability <path>] [--evidence <path>] [--log <path>] [--note <text>] <output.adf>\n")
 	fmt.Fprintf(os.Stderr, "  aaa acquire-flux [--json] [--device <device>] [--gw <path>] [--timeout <duration>] [--evidence <path>] [--log <path>] [--note <text>] <output.scp>\n")
 	fmt.Fprintf(os.Stderr, "  aaa acquire-session [--json] [--device <device>] [--gw <path>] [--timeout <duration>] [--reads <n>] [--note <text>] <output-prefix>\n")
+	fmt.Fprintf(os.Stderr, "  aaa evidence create --output <manifest.json> --entry <kind:name:path> [--entry ...] [--note <text>]\n")
+	fmt.Fprintf(os.Stderr, "  aaa evidence verify [--root <dir>] <manifest.json>\n")
 	fmt.Fprintf(os.Stderr, "  aaa daemon [--workers <n>] [--queue-depth <n>] [--state-root <dir>] [--incoming-root <dir>] [--max-upload-bytes <n>] [--listen <addr>]\n")
 	fmt.Fprintf(os.Stderr, "  aaa support identify --kind <kind> --version <version> [--name <name>] [--source <source>] <file>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures candidates [--json]\n")
@@ -59,6 +61,8 @@ func main() {
 		acquireFluxCommand(os.Args[2:])
 	case "acquire-session":
 		acquireSessionCommand(os.Args[2:])
+	case "evidence":
+		evidenceCommand(os.Args[2:])
 	case "daemon":
 		daemonCommand(os.Args[2:])
 	case "support":
