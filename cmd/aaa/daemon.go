@@ -44,7 +44,6 @@ func daemonCommand(args []string) {
 		fmt.Fprintln(os.Stderr, "max-upload-bytes must be at least 1")
 		os.Exit(2)
 	}
-
 	history, err := scanhistory.New(*stateRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "scan history failed: %v\n", err)
@@ -54,35 +53,18 @@ func daemonCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "scan history replay failed: %v\n", err)
 		os.Exit(1)
 	}
-
 	manager, err := daemon.NewWithRecorder(*workers, *queueDepth, scanner.ScanFile, history)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon configuration failed: %v\n", err)
 		os.Exit(2)
 	}
-
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx, cancel := context.WithCancel(signalCtx)
 	defer cancel()
-
-	server := &http.Server{
-		Addr: *listen,
-		Handler: apihttp.NewHandlerWithSubmission(history, version, apihttp.SubmissionConfig{
-			Submitter:      manager,
-			IncomingRoot:  *incomingRoot,
-			MaxUploadBytes: *maxUploadBytes,
-		}),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       5 * time.Minute,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
-	}
-
+	server := &http.Server{Addr: *listen, Handler: apihttp.NewHandlerWithSubmission(history, version, apihttp.SubmissionConfig{Submitter: manager, IncomingRoot: *incomingRoot, MaxUploadBytes: *maxUploadBytes}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Minute, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	managerDone := make(chan error, 1)
-	go func() {
-		managerDone <- manager.Run(ctx)
-	}()
+	go func() { managerDone <- manager.Run(ctx) }()
 	serverDone := make(chan error, 1)
 	go func() {
 		err := server.ListenAndServe()
@@ -91,9 +73,7 @@ func daemonCommand(args []string) {
 		}
 		serverDone <- err
 	}()
-
 	fmt.Fprintf(os.Stderr, "AAA daemon started workers=%d queue-depth=%d history=%s incoming=%s max-upload-bytes=%d api=%s\n", *workers, *queueDepth, history.Path(), *incomingRoot, *maxUploadBytes, *listen)
-
 	var runErr error
 	managerFinished := false
 	select {
@@ -111,40 +91,34 @@ func daemonCommand(args []string) {
 		}
 		cancel()
 	}
-
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	if err := server.Shutdown(shutdownCtx); err != nil && runErr == nil {
 		runErr = fmt.Errorf("HTTP API shutdown: %w", err)
 	}
 	shutdownCancel()
-
 	if !managerFinished {
 		if err := <-managerDone; err != nil && runErr == nil {
 			runErr = fmt.Errorf("scan manager: %w", err)
 		}
 	}
-
 	if runErr != nil {
 		fmt.Fprintf(os.Stderr, "AAA daemon failed: %v\n", runErr)
 		os.Exit(1)
 	}
 	fmt.Fprintln(os.Stderr, "AAA daemon stopped")
 }
-
 func stateRootFromEnv() string {
 	if root := os.Getenv("AAA_STATE_ROOT"); root != "" {
 		return root
 	}
 	return defaultStateRoot
 }
-
 func incomingRootFromEnv() string {
 	if root := os.Getenv("AAA_INCOMING_ROOT"); root != "" {
 		return root
 	}
 	return defaultIncomingRoot
 }
-
 func listenFromEnv() string {
 	if listen := os.Getenv("AAA_LISTEN"); listen != "" {
 		return listen
