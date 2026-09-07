@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -127,5 +128,45 @@ func TestStageRejectsChangedOrOversizedCandidate(t *testing.T) {
 	}
 	if _, err := Stage(candidate, incoming, 4); err == nil {
 		t.Fatal("oversized candidate should fail")
+	}
+}
+
+func TestStageRejectsSymlinkReplacementWithMatchingMetadata(t *testing.T) {
+	drop := t.TempDir()
+	incoming := t.TempDir()
+	path := filepath.Join(drop, "disk.adf")
+	payload := []byte("original")
+	if err := os.WriteFile(path, payload, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	candidate, ok, err := Observe(drop, "disk.adf")
+	if err != nil || !ok {
+		t.Fatalf("observe ok=%v err=%v", ok, err)
+	}
+
+	target := filepath.Join(drop, ".replacement")
+	if err := os.WriteFile(target, []byte("attacker"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(target, candidate.ModTime, candidate.ModTime); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = Stage(candidate, incoming, 1024)
+	if err == nil || !strings.Contains(err.Error(), "path changed") {
+		t.Fatalf("expected path replacement rejection, got %v", err)
+	}
+	entries, err := os.ReadDir(incoming)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("staging wrote incoming artifacts after rejected replacement: %v", entries)
 	}
 }
