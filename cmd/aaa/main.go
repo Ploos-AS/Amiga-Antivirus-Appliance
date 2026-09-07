@@ -23,6 +23,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "Usage:\n")
 	fmt.Fprintf(os.Stderr, "  aaa scan [--json] [--clamav] <file>\n")
 	fmt.Fprintf(os.Stderr, "  aaa daemon [--workers <n>] [--queue-depth <n>]\n")
+	fmt.Fprintf(os.Stderr, "  aaa support identify --kind <kind> --version <version> [--name <name>] [--source <source>] <file>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures candidates [--json]\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures validate\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures promote [--validation <result.json>] <id>\n")
@@ -51,6 +52,8 @@ func main() {
 		scanCommand(os.Args[2:])
 	case "daemon":
 		daemonCommand(os.Args[2:])
+	case "support":
+		supportCommand(os.Args[2:])
 	case "signatures":
 		signaturesCommand(os.Args[2:])
 	case "version", "--version", "-version":
