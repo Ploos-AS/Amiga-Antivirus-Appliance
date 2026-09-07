@@ -15,10 +15,10 @@ import (
 )
 
 type acquireSessionOutput struct {
-	SessionPath string                    `json:"session_path"`
-	Session     acquisition.Session       `json:"session"`
-	Flux        fluxAcquireOutput         `json:"flux"`
-	ADFSeries   acquireSeriesOutput       `json:"adf_series"`
+	SessionPath string              `json:"session_path"`
+	Session     acquisition.Session `json:"session"`
+	Flux        fluxAcquireOutput   `json:"flux"`
+	ADFSeries   acquireSeriesOutput `json:"adf_series"`
 }
 
 func acquireSessionCommand(args []string) {
