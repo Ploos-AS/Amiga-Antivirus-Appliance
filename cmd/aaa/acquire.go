@@ -23,9 +23,9 @@ type acquireOutput struct {
 }
 
 type acquireSeriesOutput struct {
-	Reads         []acquireOutput          `json:"reads"`
+	Reads         []acquireOutput           `json:"reads"`
 	Repeatability acquisition.Repeatability `json:"repeatability"`
-	Manifest      string                   `json:"manifest_path"`
+	Manifest      string                    `json:"manifest_path"`
 }
 
 type acquireOptions struct {
