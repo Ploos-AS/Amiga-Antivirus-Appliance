@@ -50,10 +50,10 @@ aaa version
 - **M6.4b** — FDI preservation-image helper boundary plus scanner integration: implemented and CI-qualified with deterministic fake-helper coverage; real FDI parser/helper/fixture and Orange Pi runtime qualification pending.
 - **M7** — Signature Factory, normalized evidence/provenance, ClamAV export, corpus qualification and signed/versioned signature distribution: implemented and code-qualified; reference-appliance runtime qualification pending.
 - **M8** — isolated historical Amiga scanner adapters, provenance, consensus/evidence aggregation and M8.7 support-component identity: implemented and code-qualified; real emulator/scanner appliance runtime qualification pending.
-- **M9** — daemon, persistent scan history, REST API, upload pipeline, hardening and production systemd integration: implemented and code-qualified; reference-appliance service/reboot qualification pending.
+- **M9** — daemon, persistent scan history, REST API, upload pipeline, hardening and production systemd integration: implemented and code-qualified; REST result serialization uses an API-safe whitelist and does not expose the scanner's host input path; reference-appliance service/reboot qualification pending.
 - **M10** — embedded Web UI, structured results, attributed engine cards, disagreement display and operational dashboard: implementation complete through M10.5; code qualification is tracked in `docs/M10_QUALIFICATION.md`, while Orange Pi runtime and visible browser qualification remain separate hardware gates.
-- **M11** — secure SMB drop-folder workflow, stable-file ingest, immutable staging, daemon watcher, restart-safe ingest receipts and authenticated Samba appliance integration: implementation complete through M11.2 and code-qualified; Orange Pi/DietPi authenticated runtime qualification remains pending. See `docs/M11_QUALIFICATION.md`.
-- **M12.0–M12.3** — Greaseweazle acquisition foundation, hash-bound `aaa acquire`, multi-read repeatability classification and raw SCP flux-preservation boundary: implemented and code-qualified with deterministic fake-`gw` coverage; real Greaseweazle/drive/media qualification remains pending reference hardware.
+- **M11** — secure SMB drop-folder workflow, stable-file ingest, immutable staging, daemon watcher, restart-safe ingest receipts and authenticated Samba appliance integration: implementation complete through M11.2 and code-qualified; staging binds the opened source to the observed path with post-open `Lstat`/`SameFile` validation to reject path replacement/symlink races; Orange Pi/DietPi authenticated runtime qualification remains pending. See `docs/M11_QUALIFICATION.md`.
+- **M12.0–M12.6** — Greaseweazle acquisition foundation, hash-bound ADF acquisition, multi-read repeatability, raw SCP flux preservation, same-media acquisition sessions and qualification tooling: implemented and code-qualified with deterministic fake-`gw` coverage; physical Greaseweazle/drive/media qualification remains explicitly pending hardware. See `docs/M12_QUALIFICATION.md`.
 
 M3 can declare an ADF `infected` when its bootblock exactly matches a known-malicious entry. A known-clean bootblock does not make the whole disk clean, because other malware may be present elsewhere in the disk image.
 
@@ -133,7 +133,7 @@ No submitted material is automatically deleted.
 
 ## Reference appliance installation and qualification
 
-When the reference hardware is available, M0 remains the foundation qualification. The production daemon is installed with the M9 installer; M10 adds its HTTP/UI runtime gate and M11 adds the authenticated SMB drop-folder gate:
+When the reference hardware is available, M0 remains the foundation qualification. The production daemon is installed with the M9 installer; M10 adds its HTTP/UI runtime gate, M11 adds the authenticated SMB drop-folder gate, and M12 adds the physical Greaseweazle acquisition gate:
 
 ```sh
 sudo sh scripts/qualify-m0.sh
@@ -142,9 +142,10 @@ sudo sh scripts/qualify-m9.sh
 sudo sh scripts/qualify-m10.sh
 sudo AAA_SMB_PASSWORD_FILE=/root/aaa-smb-password sh scripts/install-m11.sh
 sudo AAA_SMB_PASSWORD_FILE=/root/aaa-smb-password sh scripts/qualify-m11.sh
+sudo sh scripts/qualify-m12.sh
 ```
 
-M10 is not fully appliance-qualified until the automated M10 runtime gate and the visible/manual browser checklist in `docs/M10_5_SPEC.md` have both passed on the Orange Pi Zero 3 / DietPi reference system. M11 is not appliance-qualified until its authenticated SMB3 end-to-end gate has passed on the same reference appliance.
+M10 is not fully appliance-qualified until the automated M10 runtime gate and the visible/manual browser checklist in `docs/M10_5_SPEC.md` have both passed on the Orange Pi Zero 3 / DietPi reference system. M11 is not appliance-qualified until its authenticated SMB3 end-to-end gate has passed on the same reference appliance. M12 is not physically qualified until `scripts/qualify-m12.sh` has passed with a real Greaseweazle, drive and diskette and the resulting acquisition evidence has been retained.
 
 ## Development
 
@@ -160,7 +161,7 @@ The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/
 
 ## Roadmap
 
-- M0 appliance foundation
+- M0 appliance foundation — code complete; hardware qualification pending
 - M1 `aaa` CLI, hashing, format identification
 - M2 ADF and boot-block analysis
 - M3 known-clean / known-malicious boot-block database
@@ -171,11 +172,13 @@ The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/
 - M6 ADZ/DMS/LHA/LZX/archive pipeline
 - M6.4 IPF/FDI preservation-image support
 - M7 Signature Factory and signature distribution
-- M8 isolated emulated Amiga scanner engines and consensus
-- M9 daemon, REST API, scan history and appliance service integration
-- M10 Web UI — implementation complete; appliance runtime/visual qualification pending reference hardware
-- M11 SMB drop-folder workflow — implementation complete; appliance runtime qualification pending reference hardware
-- M12 Greaseweazle integration — implemented through M12.3; hardware/runtime qualification and session linkage remain
+- M8 isolated emulated Amiga scanner engines and consensus — code-qualified; real runtime pending
+- M9 daemon, REST API, scan history and appliance service integration — code-qualified and API path-redaction hardened; appliance runtime pending
+- M10 Web UI — implementation complete; appliance runtime/visual qualification pending
+- M11 SMB drop-folder workflow — code-qualified and path-replacement hardened; appliance runtime qualification pending
+- M12 Greaseweazle integration — implemented through M12.6; physical acquisition qualification pending hardware
+
+Until the reference appliance and acquisition hardware are available, the remaining M0/M8/M9/M10/M11/M12 qualification gates are intentionally recorded as hardware/runtime pending rather than simulated as passes.
 
 ## License
 
