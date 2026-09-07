@@ -42,7 +42,7 @@ func daemonCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "scan history failed: %v\n", err)
 		os.Exit(1)
 	}
-	if _, err := history.LoadLatest(); err != nil {
+	if _, err := history.RecoverInterrupted(); err != nil {
 		fmt.Fprintf(os.Stderr, "scan history replay failed: %v\n", err)
 		os.Exit(1)
 	}
