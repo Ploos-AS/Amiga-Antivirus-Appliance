@@ -1,29 +1,69 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/daemon"
 )
 
+const defaultMaxUploadBytes int64 = 256 * 1024 * 1024
+
 // HistoryReader supplies the latest persisted snapshot for each scan job.
 type HistoryReader interface {
 	LoadLatest() ([]daemon.Job, error)
 }
 
-// Handler exposes the read-only M9.2 HTTP API.
-type Handler struct {
-	history HistoryReader
-	version string
+// Submitter accepts a fully ingested file path for scanning.
+type Submitter interface {
+	Submit(path string) (daemon.Job, error)
 }
 
-// NewHandler creates the read-only API handler.
+// SubmissionConfig enables the M9.3 upload endpoint.
+type SubmissionConfig struct {
+	Submitter      Submitter
+	IncomingRoot  string
+	MaxUploadBytes int64
+}
+
+// Handler exposes the M9 HTTP API.
+type Handler struct {
+	history        HistoryReader
+	version        string
+	submitter      Submitter
+	incomingRoot   string
+	maxUploadBytes int64
+}
+
+// NewHandler creates the read-only M9.2 API handler.
 func NewHandler(history HistoryReader, version string) http.Handler {
 	return &Handler{history: history, version: version}
+}
+
+// NewHandlerWithSubmission creates the M9.3 API handler with controlled upload
+// ingestion. The caller chooses the incoming root; clients never supply a host
+// filesystem path.
+func NewHandlerWithSubmission(history HistoryReader, version string, cfg SubmissionConfig) http.Handler {
+	limit := cfg.MaxUploadBytes
+	if limit <= 0 {
+		limit = defaultMaxUploadBytes
+	}
+	return &Handler{
+		history:        history,
+		version:        version,
+		submitter:      cfg.Submitter,
+		incomingRoot:   cfg.IncomingRoot,
+		maxUploadBytes: limit,
+	}
 }
 
 type errorResponse struct {
@@ -48,11 +88,28 @@ type scanResponse struct {
 	Error       string       `json:"error,omitempty"`
 }
 
+type submitResponse struct {
+	ID        string       `json:"id"`
+	State     daemon.State `json:"state"`
+	SHA256    string       `json:"sha256"`
+	Size      int64        `json:"size"`
+	Duplicate bool         `json:"duplicate"`
+}
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
+
+	if r.URL.Path == "/api/v1/scans" && r.Method == http.MethodPost && h.submissionEnabled() {
+		h.submitScan(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", http.MethodGet)
+		allow := http.MethodGet
+		if r.URL.Path == "/api/v1/scans" && h.submissionEnabled() {
+			allow += ", " + http.MethodPost
+		}
+		w.Header().Set("Allow", allow)
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
 		return
 	}
@@ -67,6 +124,104 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		h.scanRoute(w, r.URL.Path)
 	}
+}
+
+func (h *Handler) submissionEnabled() bool {
+	return h.submitter != nil && h.incomingRoot != ""
+}
+
+func (h *Handler) submitScan(w http.ResponseWriter, r *http.Request) {
+	name, err := safeUploadName(r.Header.Get("X-AAA-Filename"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid upload filename"})
+		return
+	}
+	if r.ContentLength > h.maxUploadBytes {
+		writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: "upload too large"})
+		return
+	}
+	if err := os.MkdirAll(h.incomingRoot, 0o750); err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "incoming storage unavailable"})
+		return
+	}
+
+	tmp, err := os.CreateTemp(h.incomingRoot, ".upload-*")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "incoming storage unavailable"})
+		return
+	}
+	tmpPath := tmp.Name()
+	removeTemp := true
+	defer func() {
+		_ = tmp.Close()
+		if removeTemp {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	hash := sha256.New()
+	n, copyErr := io.Copy(io.MultiWriter(tmp, hash), io.LimitReader(r.Body, h.maxUploadBytes+1))
+	if copyErr != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "upload failed"})
+		return
+	}
+	if n > h.maxUploadBytes {
+		writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: "upload too large"})
+		return
+	}
+	if n == 0 {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "empty upload"})
+		return
+	}
+	if err := tmp.Sync(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "incoming storage unavailable"})
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "incoming storage unavailable"})
+		return
+	}
+
+	digest := hex.EncodeToString(hash.Sum(nil))
+	target := filepath.Join(h.incomingRoot, digest+"-"+name)
+	duplicate := false
+	if err := os.Link(tmpPath, target); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			duplicate = true
+		} else {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "incoming storage unavailable"})
+			return
+		}
+	}
+	if err := os.Remove(tmpPath); err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "incoming storage unavailable"})
+		return
+	}
+	removeTemp = false
+
+	job, err := h.submitter.Submit(target)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "scan queue unavailable"})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, submitResponse{
+		ID:        job.ID,
+		State:     job.State,
+		SHA256:    digest,
+		Size:      n,
+		Duplicate: duplicate,
+	})
+}
+
+func safeUploadName(value string) (string, error) {
+	name := strings.TrimSpace(value)
+	if name == "" {
+		return "upload.bin", nil
+	}
+	if len(name) > 255 || name == "." || name == ".." || strings.ContainsAny(name, `/\\`) || filepath.Base(name) != name {
+		return "", fmt.Errorf("unsafe filename")
+	}
+	return name, nil
 }
 
 func (h *Handler) listScans(w http.ResponseWriter) {
