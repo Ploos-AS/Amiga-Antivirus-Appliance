@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "qualification": "M8.7",
+  "components": [
+    {
+      "kind": "xvs-library",
+      "name": "xvs.library",
+      "version": "33.49",
+      "size": 68092,
+      "sha256": "d178b7770199cd2abac2bb66ee95a86880a649c98b8bb681e8255de117eee21c",
+      "distribution": {
+        "archive_name": "xvslibrary.lha",
+        "archive_sha256": "7642b238e8df256e3519a909682f43b607e61df383e04766b660b773713b2c0a",
+        "member_path": "xvs/libs/xvs.library",
+        "lha_method": "-lh5-",
+        "member_crc16_ibm": "eab4"
+      },
+      "version_evidence": {
+        "member_path": "xvs.readme",
+        "statement": "External Virus Scanner Library v33.49"
+      },
+      "redistributed": false
+    },
+    {
+      "kind": "virusz-iii-bootblocks",
+      "name": "VirusZ_III.Bootblocks",
+      "version": "24.01.2026",
+      "size": 62472,
+      "sha256": "64c12a6631e0c3e6e9246fee684902d0b50046b1167949691909d2e556ace1cb",
+      "distribution": {
+        "archive_name": "vhtvzboot.lha",
+        "archive_sha256": "e7fb59a015b2d425ad0b2d59d2b46de6fe887429e438e8d86110a776e26d3906",
+        "member_path": "s\\VirusZ_III.Bootblocks",
+        "lha_method": "-lh5-",
+        "member_crc16_ibm": "7701"
+      },
+      "version_evidence": {
+        "member_path": "VirusZ_III.Bootblocks.doc",
+        "statement": "Last updated: 24 january 2026"
+      },
+      "redistributed": false
+    }
+  ]
+}
