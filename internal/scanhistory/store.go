@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/daemon"
 )
@@ -104,6 +105,29 @@ func (s *Store) LoadLatest() ([]daemon.Job, error) {
 	sort.Slice(jobs, func(i, j int) bool {
 		return jobs[i].SubmittedAt.After(jobs[j].SubmittedAt)
 	})
+	return jobs, nil
+}
+
+// RecoverInterrupted closes jobs that cannot still be running after a daemon
+// restart. The recovery is itself appended to the journal so later replay and
+// API clients see an explicit terminal state rather than stale activity.
+func (s *Store) RecoverInterrupted() ([]daemon.Job, error) {
+	jobs, err := s.LoadLatest()
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	for i := range jobs {
+		if jobs[i].State != daemon.StatePending && jobs[i].State != daemon.StateRunning {
+			continue
+		}
+		jobs[i].State = daemon.StateCanceled
+		jobs[i].FinishedAt = &now
+		jobs[i].Error = "daemon restarted before scan completed"
+		if err := s.Record(jobs[i]); err != nil {
+			return nil, fmt.Errorf("recover interrupted scan %s: %w", jobs[i].ID, err)
+		}
+	}
 	return jobs, nil
 }
 
