@@ -27,7 +27,7 @@ jobs:
             exit 1
           fi
       - name: Appliance shell syntax
-        run: sh -n scripts/install-m9.sh scripts/qualify-m9.sh scripts/qualify-m10.sh scripts/install-m11.sh scripts/qualify-m11.sh
+        run: sh -n scripts/install-m9.sh scripts/qualify-m9.sh scripts/qualify-m10.sh scripts/install-m11.sh scripts/qualify-m11.sh scripts/qualify-m12.sh
       - name: M11 Samba policy assertions
         run: |
           grep -Fq 'server min protocol = SMB2_10' samba/aaa-drop.conf
@@ -37,6 +37,12 @@ jobs:
           grep -Fq 'valid users = aaa-drop' samba/aaa-drop.conf
           grep -Fq 'follow symlinks = no' samba/aaa-drop.conf
           grep -Fq 'path = /data/aaa/drop' samba/aaa-drop.conf
+      - name: M12 qualification policy assertions
+        run: |
+          grep -Fq 'acquire-session' scripts/qualify-m12.sh
+          grep -Fq 'gw info' docs/M12_QUALIFICATION.md
+          grep -Fq 'no SCP-to-ADF derivation asserted' scripts/qualify-m12.sh
+          grep -Fq 'hardware-runtime-pending' docs/M12_QUALIFICATION.md
       - name: M9.5 systemd unit verification
         run: |
           sudo install -m 0755 /bin/true /usr/local/bin/aaa
