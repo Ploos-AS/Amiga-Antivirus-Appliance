@@ -103,3 +103,116 @@ func TestRunAcquireRefusesExistingSidecarBeforeAcquisition(t *testing.T) {
 		t.Fatal("physical acquisition started despite existing sidecar")
 	}
 }
+
+func TestRunAcquireSeriesReproducible(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "disk.adf")
+	payload := []byte("same-image")
+	sum := sha256.Sum256(payload)
+	digest := hex.EncodeToString(sum[:])
+	now := time.Now().UTC()
+
+	acquire := func(_ context.Context, path string) (acquisition.Result, error) {
+		if err := os.WriteFile(path, payload, 0o640); err != nil {
+			return acquisition.Result{}, err
+		}
+		return acquisition.Result{
+			ImagePath: path,
+			RawLog:    "read ok\n",
+			Evidence: acquisition.Evidence{
+				Method:       "physical-floppy",
+				Tool:         "greaseweazle",
+				ToolVersion:  "gw 1.23",
+				Format:       "adf",
+				OutputName:   filepath.Base(path),
+				OutputSHA256: digest,
+				OutputSize:   int64(len(payload)),
+				Command:      []string{"gw", "read"},
+				StartedAt:    now,
+				FinishedAt:   now,
+			},
+		}, nil
+	}
+	scan := func(path string) (scanner.Result, error) {
+		return scanner.Result{Name: filepath.Base(path), SHA256: digest, Format: "adf", Verdict: "unknown"}, nil
+	}
+
+	out, err := runAcquireSeries(context.Background(), acquireOptions{OutputPath: base}, 2, "", acquire, scan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Repeatability.Status != acquisition.RepeatabilityReproducible || out.Repeatability.ReadCount != 2 {
+		t.Fatalf("repeatability=%+v", out.Repeatability)
+	}
+	if len(out.Reads) != 2 {
+		t.Fatalf("reads=%d", len(out.Reads))
+	}
+	if out.Reads[0].Acquisition.OutputName != "disk.read-01.adf" || out.Reads[1].Acquisition.OutputName != "disk.read-02.adf" {
+		t.Fatalf("names=%q,%q", out.Reads[0].Acquisition.OutputName, out.Reads[1].Acquisition.OutputName)
+	}
+	if out.Manifest != filepath.Join(dir, "disk.repeatability.json") {
+		t.Fatalf("manifest=%q", out.Manifest)
+	}
+	if _, err := os.Stat(out.Manifest); err != nil {
+		t.Fatalf("missing manifest: %v", err)
+	}
+}
+
+func TestRunAcquireSeriesDivergentPreservesReads(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "disk.adf")
+	now := time.Now().UTC()
+	call := 0
+	acquire := func(_ context.Context, path string) (acquisition.Result, error) {
+		call++
+		payload := []byte(fmt.Sprintf("image-%d", call))
+		sum := sha256.Sum256(payload)
+		digest := hex.EncodeToString(sum[:])
+		if err := os.WriteFile(path, payload, 0o640); err != nil {
+			return acquisition.Result{}, err
+		}
+		return acquisition.Result{ImagePath: path, Evidence: acquisition.Evidence{Method: "physical-floppy", Tool: "greaseweazle", ToolVersion: "gw", Format: "adf", OutputName: filepath.Base(path), OutputSHA256: digest, OutputSize: int64(len(payload)), Command: []string{"gw", "read"}, StartedAt: now, FinishedAt: now}}, nil
+	}
+	scan := func(path string) (scanner.Result, error) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return scanner.Result{}, err
+		}
+		sum := sha256.Sum256(data)
+		return scanner.Result{Name: filepath.Base(path), SHA256: hex.EncodeToString(sum[:]), Format: "adf", Verdict: "unknown"}, nil
+	}
+
+	out, err := runAcquireSeries(context.Background(), acquireOptions{OutputPath: base}, 2, "", acquire, scan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Repeatability.Status != acquisition.RepeatabilityDivergent || out.Repeatability.UniqueHashes != 2 {
+		t.Fatalf("repeatability=%+v", out.Repeatability)
+	}
+	for i := 1; i <= 2; i++ {
+		if _, err := os.Stat(repeatedOutputPath(base, i)); err != nil {
+			t.Fatalf("read %d was not preserved: %v", i, err)
+		}
+	}
+}
+
+func TestRunAcquireSeriesPreflightStopsBeforeRead(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "disk.adf")
+	manifest := repeatabilityManifestPath(base)
+	if err := os.WriteFile(manifest, []byte("keep"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	acquire := func(context.Context, string) (acquisition.Result, error) {
+		called = true
+		return acquisition.Result{}, nil
+	}
+	_, err := runAcquireSeries(context.Background(), acquireOptions{OutputPath: base}, 2, "", acquire, func(string) (scanner.Result, error) { return scanner.Result{}, nil })
+	if err == nil || !strings.Contains(err.Error(), "refusing to overwrite existing multi-read artifact") {
+		t.Fatalf("err=%v", err)
+	}
+	if called {
+		t.Fatal("physical acquisition started despite existing manifest")
+	}
+}
