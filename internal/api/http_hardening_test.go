@@ -32,7 +32,7 @@ func TestSubmitRejectsUnsupportedContentType(t *testing.T) {
 	submitter := &fakeSubmitter{}
 	h := NewHandlerWithSubmission(fakeHistory{}, "test", SubmissionConfig{
 		Submitter:      submitter,
-		IncomingRoot:  t.TempDir(),
+		IncomingRoot:   t.TempDir(),
 		MaxUploadBytes: 1024,
 	})
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/scans", strings.NewReader("payload"))
@@ -52,7 +52,7 @@ func TestSubmitAcceptsOctetStreamContentType(t *testing.T) {
 	submitter := &fakeSubmitter{}
 	h := NewHandlerWithSubmission(fakeHistory{}, "test", SubmissionConfig{
 		Submitter:      submitter,
-		IncomingRoot:  t.TempDir(),
+		IncomingRoot:   t.TempDir(),
 		MaxUploadBytes: 1024,
 	})
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/scans", strings.NewReader("payload"))
