@@ -13,6 +13,7 @@ import (
 
 	apihttp "github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/api"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/daemon"
+	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/dropfolder"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanhistory"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/scanner"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/webui"
@@ -21,8 +22,11 @@ import (
 const (
 	defaultStateRoot      = "/data/aaa/state"
 	defaultIncomingRoot   = "/data/aaa/incoming"
+	defaultDropRoot       = "/data/aaa/drop"
 	defaultListen         = "127.0.0.1:8080"
 	defaultMaxUploadBytes = int64(256 * 1024 * 1024)
+	defaultDropPoll       = 2 * time.Second
+	defaultDropStable     = 5 * time.Second
 )
 
 func daemonCommand(args []string) {
@@ -32,7 +36,10 @@ func daemonCommand(args []string) {
 	queueDepth := fs.Int("queue-depth", 32, "maximum number of queued scans")
 	stateRoot := fs.String("state-root", stateRootFromEnv(), "persistent daemon state directory")
 	incomingRoot := fs.String("incoming-root", incomingRootFromEnv(), "controlled scan upload directory")
-	maxUploadBytes := fs.Int64("max-upload-bytes", defaultMaxUploadBytes, "maximum HTTP scan upload size in bytes")
+	dropRoot := fs.String("drop-root", dropRootFromEnv(), "externally writable drop-folder directory")
+	dropPoll := fs.Duration("drop-poll", defaultDropPoll, "drop-folder polling interval")
+	dropStable := fs.Duration("drop-stable", defaultDropStable, "required unchanged time before drop-folder ingest")
+	maxUploadBytes := fs.Int64("max-upload-bytes", defaultMaxUploadBytes, "maximum HTTP/drop scan input size in bytes")
 	listen := fs.String("listen", listenFromEnv(), "HTTP API listen address")
 	allowRemote := fs.Bool("allow-remote", false, "allow HTTP API to bind to a non-loopback address")
 	if err := fs.Parse(args); err != nil {
@@ -44,6 +51,14 @@ func daemonCommand(args []string) {
 	}
 	if *maxUploadBytes < 1 {
 		fmt.Fprintln(os.Stderr, "max-upload-bytes must be at least 1")
+		os.Exit(2)
+	}
+	if *dropPoll <= 0 || *dropStable <= 0 {
+		fmt.Fprintln(os.Stderr, "drop-poll and drop-stable must be positive")
+		os.Exit(2)
+	}
+	if *dropRoot == *incomingRoot {
+		fmt.Fprintln(os.Stderr, "drop-root and incoming-root must differ")
 		os.Exit(2)
 	}
 	if err := validateListenAddress(*listen, *allowRemote); err != nil {
@@ -69,6 +84,18 @@ func daemonCommand(args []string) {
 		os.Exit(2)
 	}
 
+	dropWatcher := dropfolder.Watcher{
+		Root:         *dropRoot,
+		IncomingRoot: *incomingRoot,
+		PollInterval: *dropPoll,
+		StableFor:    *dropStable,
+		MaxBytes:     *maxUploadBytes,
+		Submit: func(path string) error {
+			_, err := manager.Submit(path)
+			return err
+		},
+	}
+
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx, cancel := context.WithCancel(signalCtx)
@@ -91,6 +118,8 @@ func daemonCommand(args []string) {
 
 	managerDone := make(chan error, 1)
 	go func() { managerDone <- manager.Run(ctx) }()
+	dropDone := make(chan error, 1)
+	go func() { dropDone <- dropWatcher.Run(ctx) }()
 	serverDone := make(chan error, 1)
 	go func() {
 		err := server.ListenAndServe()
@@ -100,10 +129,11 @@ func daemonCommand(args []string) {
 		serverDone <- err
 	}()
 
-	fmt.Fprintf(os.Stderr, "AAA daemon started workers=%d queue-depth=%d history=%s incoming=%s max-upload-bytes=%d api=%s allow-remote=%t\n", *workers, *queueDepth, history.Path(), *incomingRoot, *maxUploadBytes, *listen, *allowRemote)
+	fmt.Fprintf(os.Stderr, "AAA daemon started workers=%d queue-depth=%d history=%s incoming=%s drop=%s drop-poll=%s drop-stable=%s max-input-bytes=%d api=%s allow-remote=%t\n", *workers, *queueDepth, history.Path(), *incomingRoot, *dropRoot, *dropPoll, *dropStable, *maxUploadBytes, *listen, *allowRemote)
 
 	var runErr error
 	managerFinished := false
+	dropFinished := false
 	select {
 	case <-signalCtx.Done():
 		cancel()
@@ -111,6 +141,12 @@ func daemonCommand(args []string) {
 		managerFinished = true
 		if err != nil {
 			runErr = fmt.Errorf("scan manager: %w", err)
+		}
+		cancel()
+	case err := <-dropDone:
+		dropFinished = true
+		if err != nil {
+			runErr = fmt.Errorf("drop watcher: %w", err)
 		}
 		cancel()
 	case err := <-serverDone:
@@ -129,6 +165,11 @@ func daemonCommand(args []string) {
 	if !managerFinished {
 		if err := <-managerDone; err != nil && runErr == nil {
 			runErr = fmt.Errorf("scan manager: %w", err)
+		}
+	}
+	if !dropFinished {
+		if err := <-dropDone; err != nil && runErr == nil {
+			runErr = fmt.Errorf("drop watcher: %w", err)
 		}
 	}
 
@@ -151,6 +192,13 @@ func incomingRootFromEnv() string {
 		return root
 	}
 	return defaultIncomingRoot
+}
+
+func dropRootFromEnv() string {
+	if root := os.Getenv("AAA_DROP_ROOT"); root != "" {
+		return root
+	}
+	return defaultDropRoot
 }
 
 func listenFromEnv() string {
