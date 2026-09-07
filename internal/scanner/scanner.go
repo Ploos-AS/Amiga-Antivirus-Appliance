@@ -13,6 +13,7 @@ import (
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/adf"
 	archivepkg "github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/archive"
+	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/engineevidence"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/hunk"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/preservation"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/signatures"
@@ -44,6 +45,7 @@ type Result struct {
 	Format            string                  `json:"format"`
 	Verdict           string                  `json:"verdict"`
 	Detection         string                  `json:"detection,omitempty"`
+	EngineResults     []engineevidence.Result `json:"engine_results,omitempty"`
 	Archive           *archivepkg.Analysis    `json:"archive,omitempty"`
 	PreservationImage *preservation.Analysis  `json:"preservation_image,omitempty"`
 	MemberResults     []MemberResult          `json:"member_results,omitempty"`
