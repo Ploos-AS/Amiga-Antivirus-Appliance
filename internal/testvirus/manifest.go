@@ -23,9 +23,9 @@ type Sample struct {
 	Name               string   `json:"name"`
 	SHA256             string   `json:"sha256"`
 	Synthetic          bool     `json:"synthetic"`
-	Source              string   `json:"source"`
+	Source             string   `json:"source"`
 	ExpectedDetections []string `json:"expected_detections,omitempty"`
-	Notes               string   `json:"notes,omitempty"`
+	Notes              string   `json:"notes,omitempty"`
 }
 
 func Decode(r io.Reader) (Manifest, error) {
