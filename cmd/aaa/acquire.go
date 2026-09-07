@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/acquisition"
@@ -19,6 +20,12 @@ type acquireOutput struct {
 	Scan        scanner.Result       `json:"scan"`
 	Evidence    string               `json:"evidence_path"`
 	Log         string               `json:"log_path"`
+}
+
+type acquireSeriesOutput struct {
+	Reads         []acquireOutput          `json:"reads"`
+	Repeatability acquisition.Repeatability `json:"repeatability"`
+	Manifest      string                   `json:"manifest_path"`
 }
 
 type acquireOptions struct {
@@ -40,10 +47,12 @@ func acquireCommand(args []string) {
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	device := fs.String("device", "", "Greaseweazle device selector")
 	gw := fs.String("gw", "", "Greaseweazle executable (default: AAA_GW or gw)")
-	timeout := fs.Duration("timeout", 10*time.Minute, "maximum acquisition duration")
-	evidencePath := fs.String("evidence", "", "acquisition evidence JSON path (default: OUTPUT.acquisition.json)")
-	logPath := fs.String("log", "", "raw Greaseweazle log path (default: OUTPUT.gw.log)")
+	timeout := fs.Duration("timeout", 10*time.Minute, "maximum acquisition duration per read")
+	evidencePath := fs.String("evidence", "", "acquisition evidence JSON path (single-read only; default: OUTPUT.acquisition.json)")
+	logPath := fs.String("log", "", "raw Greaseweazle log path (single-read only; default: OUTPUT.gw.log)")
 	note := fs.String("note", "", "operator acquisition note")
+	reads := fs.Int("reads", 1, "number of independent physical reads")
+	repeatabilityPath := fs.String("repeatability", "", "multi-read manifest path (default: OUTPUT stem + .repeatability.json)")
 	if err := fs.Parse(args); err != nil {
 		os.Exit(2)
 	}
@@ -53,6 +62,18 @@ func acquireCommand(args []string) {
 	}
 	if *timeout <= 0 {
 		fmt.Fprintln(os.Stderr, "acquire timeout must be positive")
+		os.Exit(2)
+	}
+	if *reads < 1 {
+		fmt.Fprintln(os.Stderr, "acquire reads must be at least 1")
+		os.Exit(2)
+	}
+	if *reads > 1 && (*evidencePath != "" || *logPath != "") {
+		fmt.Fprintln(os.Stderr, "--evidence and --log are single-read options; multi-read sidecars are derived automatically")
+		os.Exit(2)
+	}
+	if *reads == 1 && *repeatabilityPath != "" {
+		fmt.Fprintln(os.Stderr, "--repeatability requires --reads greater than 1")
 		os.Exit(2)
 	}
 
@@ -66,34 +87,132 @@ func acquireCommand(args []string) {
 		Timeout:      *timeout,
 	}
 	g := acquisition.Greaseweazle{Executable: opts.Executable, Device: opts.Device, Timeout: opts.Timeout}
-	out, err := runAcquire(context.Background(), opts, g.ReadADF, scanner.ScanFile)
+
+	if *reads == 1 {
+		out, err := runAcquire(context.Background(), opts, g.ReadADF, scanner.ScanFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "acquire failed: %v\n", err)
+			os.Exit(1)
+		}
+		recordAcquireCandidates([]acquireOutput{out})
+		if *jsonOut {
+			encodeAcquireJSON(out)
+			return
+		}
+		printAcquire(out, opts.OutputPath)
+		return
+	}
+
+	series, err := runAcquireSeries(context.Background(), opts, *reads, *repeatabilityPath, g.ReadADF, scanner.ScanFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "acquire failed: %v\n", err)
 		os.Exit(1)
 	}
-	if out.Scan.Verdict == "infected" {
-		if err := recordSignatureCandidates(out.Scan); err != nil {
-			fmt.Fprintf(os.Stderr, "signature factory warning: %v\n", err)
-		}
-	}
-
+	recordAcquireCandidates(series.Reads)
 	if *jsonOut {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(out); err != nil {
-			fmt.Fprintf(os.Stderr, "output failed: %v\n", err)
-			os.Exit(1)
-		}
+		encodeAcquireJSON(series)
 		return
 	}
+	fmt.Println("AAA multi-read acquisition")
+	fmt.Printf("Reads:    %d\n", series.Repeatability.ReadCount)
+	fmt.Printf("Status:   %s\n", series.Repeatability.Status)
+	fmt.Printf("Unique:   %d image hash(es)\n", series.Repeatability.UniqueHashes)
+	for _, read := range series.Reads {
+		fmt.Printf("  %-20s %s verdict=%s\n", read.Acquisition.OutputName, read.Acquisition.OutputSHA256, read.Scan.Verdict)
+	}
+	fmt.Printf("Manifest: %s\n", series.Manifest)
+}
+
+func encodeAcquireJSON(value any) {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(value); err != nil {
+		fmt.Fprintf(os.Stderr, "output failed: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func printAcquire(out acquireOutput, imagePath string) {
 	fmt.Println("AAA acquisition")
-	fmt.Printf("Image:    %s\n", opts.OutputPath)
+	fmt.Printf("Image:    %s\n", imagePath)
 	fmt.Printf("SHA-256:  %s\n", out.Acquisition.OutputSHA256)
 	fmt.Printf("Size:     %d bytes\n", out.Acquisition.OutputSize)
 	fmt.Printf("Tool:     %s %s\n", out.Acquisition.Tool, out.Acquisition.ToolVersion)
 	fmt.Printf("Evidence: %s\n", out.Evidence)
 	fmt.Printf("Log:      %s\n", out.Log)
 	fmt.Printf("Scan:     %s (%s)\n", out.Scan.Verdict, out.Scan.Format)
+}
+
+func recordAcquireCandidates(reads []acquireOutput) {
+	for _, out := range reads {
+		if out.Scan.Verdict == "infected" {
+			if err := recordSignatureCandidates(out.Scan); err != nil {
+				fmt.Fprintf(os.Stderr, "signature factory warning: %v\n", err)
+			}
+		}
+	}
+}
+
+func runAcquireSeries(ctx context.Context, opts acquireOptions, reads int, manifestPath string, acquire acquireFunc, scan acquireScanFunc) (acquireSeriesOutput, error) {
+	if reads < 2 {
+		return acquireSeriesOutput{}, errors.New("multi-read acquisition requires at least two reads")
+	}
+	if filepath.Ext(opts.OutputPath) != ".adf" {
+		return acquireSeriesOutput{}, errors.New("M12.2 acquisition output must use .adf")
+	}
+	if manifestPath == "" {
+		manifestPath = repeatabilityManifestPath(opts.OutputPath)
+	}
+	planned := make([]string, 0, reads*3+1)
+	planned = append(planned, manifestPath)
+	for i := 1; i <= reads; i++ {
+		image := repeatedOutputPath(opts.OutputPath, i)
+		planned = append(planned, image, image+".acquisition.json", image+".gw.log")
+	}
+	for _, path := range planned {
+		if _, err := os.Stat(path); err == nil {
+			return acquireSeriesOutput{}, fmt.Errorf("refusing to overwrite existing multi-read artifact: %s", path)
+		} else if !os.IsNotExist(err) {
+			return acquireSeriesOutput{}, fmt.Errorf("inspect multi-read artifact %s: %w", path, err)
+		}
+	}
+
+	outputs := make([]acquireOutput, 0, reads)
+	evidence := make([]acquisition.Evidence, 0, reads)
+	for i := 1; i <= reads; i++ {
+		readOpts := opts
+		readOpts.OutputPath = repeatedOutputPath(opts.OutputPath, i)
+		readOpts.EvidencePath = ""
+		readOpts.LogPath = ""
+		out, err := runAcquire(ctx, readOpts, acquire, scan)
+		if err != nil {
+			return acquireSeriesOutput{}, fmt.Errorf("read %d/%d: %w", i, reads, err)
+		}
+		outputs = append(outputs, out)
+		evidence = append(evidence, out.Acquisition)
+	}
+
+	repeatability, err := acquisition.CompareReads(evidence)
+	if err != nil {
+		return acquireSeriesOutput{}, fmt.Errorf("compare repeated acquisitions: %w", err)
+	}
+	series := acquireSeriesOutput{Reads: outputs, Repeatability: repeatability, Manifest: manifestPath}
+	if err := writeJSONExclusive(manifestPath, series); err != nil {
+		return acquireSeriesOutput{}, fmt.Errorf("write repeatability manifest: %w", err)
+	}
+	return series, nil
+}
+
+func repeatedOutputPath(base string, read int) string {
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	return fmt.Sprintf("%s.read-%02d%s", stem, read, ext)
+}
+
+func repeatabilityManifestPath(base string) string {
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	return stem + ".repeatability.json"
 }
 
 func runAcquire(ctx context.Context, opts acquireOptions, acquire acquireFunc, scan acquireScanFunc) (acquireOutput, error) {
