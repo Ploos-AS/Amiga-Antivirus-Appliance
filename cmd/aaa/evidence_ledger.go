@@ -21,7 +21,7 @@ const (
 
 func runEvidenceLedger(args []string, stdout, stderr io.Writer, now func() time.Time) error {
 	if len(args) < 1 {
-		return errors.New("ledger requires a subcommand: append, verify or status")
+		return errors.New("ledger requires a subcommand: append, verify, status or checkpoint")
 	}
 	switch args[0] {
 	case "append":
@@ -30,6 +30,8 @@ func runEvidenceLedger(args []string, stdout, stderr io.Writer, now func() time.
 		return runEvidenceLedgerVerify(args[1:], stdout, stderr)
 	case "status":
 		return runEvidenceLedgerStatus(args[1:], stdout, stderr)
+	case "checkpoint":
+		return runEvidenceLedgerCheckpoint(args[1:], stdout, stderr)
 	default:
 		return fmt.Errorf("unknown ledger subcommand: %s", args[0])
 	}
