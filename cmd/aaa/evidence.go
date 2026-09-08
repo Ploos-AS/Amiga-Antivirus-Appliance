@@ -16,7 +16,11 @@ import (
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/evidencebundle"
 )
 
-const maxEvidenceManifestBytes = 4 << 20
+const (
+	maxEvidenceManifestBytes  = 4 << 20
+	maxEvidenceSignatureBytes = 4096
+	maxEvidenceKeyFileBytes   = 256
+)
 
 type evidenceEntrySpecs []string
 
@@ -28,7 +32,7 @@ func (v *evidenceEntrySpecs) Set(value string) error {
 
 func evidenceCommand(args []string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "evidence requires a subcommand: create, verify, pack or verify-bundle")
+		fmt.Fprintln(os.Stderr, "evidence requires a subcommand: create, verify, pack, verify-bundle, sign or verify-signed")
 		os.Exit(2)
 	}
 	switch args[0] {
@@ -50,6 +54,16 @@ func evidenceCommand(args []string) {
 	case "verify-bundle":
 		if err := runEvidenceVerifyBundle(args[1:], os.Stdout, os.Stderr); err != nil {
 			fmt.Fprintf(os.Stderr, "evidence verify-bundle failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "sign":
+		if err := runEvidenceSign(args[1:], os.Stdout, os.Stderr); err != nil {
+			fmt.Fprintf(os.Stderr, "evidence sign failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "verify-signed":
+		if err := runEvidenceVerifySigned(args[1:], os.Stdout, os.Stderr); err != nil {
+			fmt.Fprintf(os.Stderr, "evidence verify-signed failed: %v\n", err)
 			os.Exit(1)
 		}
 	default:
@@ -181,6 +195,85 @@ func runEvidenceVerifyBundle(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
+func runEvidenceSign(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("evidence sign", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	privateKeyPath := fs.String("private-key", "", "file containing one lowercase hex Ed25519 private key")
+	output := fs.String("output", "", "new detached signature path (default: BUNDLE.sig)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 || *privateKeyPath == "" {
+		return errors.New("requires --private-key <file> <bundle.zip>")
+	}
+	bundlePath := fs.Arg(0)
+	keyData, err := readSmallRegularFile(*privateKeyPath, maxEvidenceKeyFileBytes, "private key")
+	if err != nil {
+		return err
+	}
+	privateKey, err := evidencebundle.ParsePrivateKeyHexFile(keyData)
+	if err != nil {
+		return err
+	}
+	signature, err := evidencebundle.SignArchive(bundlePath, privateKey)
+	if err != nil {
+		return err
+	}
+	data, err := signature.MarshalDeterministic()
+	if err != nil {
+		return err
+	}
+	signaturePath := *output
+	if signaturePath == "" {
+		signaturePath = bundlePath + ".sig"
+	}
+	if err := writeNewFile(signaturePath, data, 0o640); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "signed evidence bundle %s signature=%s signer-key-id=%s bundle-sha256=%s\n", bundlePath, signaturePath, signature.SignerKeyID, signature.BundleSHA256)
+	return nil
+}
+
+func runEvidenceVerifySigned(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("evidence verify-signed", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	trustedKeyPath := fs.String("trusted-key", "", "file containing one lowercase hex trusted Ed25519 public key")
+	signaturePath := fs.String("signature", "", "detached signature path (default: BUNDLE.sig)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 || *trustedKeyPath == "" {
+		return errors.New("requires --trusted-key <file> <bundle.zip>")
+	}
+	bundlePath := fs.Arg(0)
+	keyData, err := readSmallRegularFile(*trustedKeyPath, maxEvidenceKeyFileBytes, "trusted public key")
+	if err != nil {
+		return err
+	}
+	publicKey, trustedKeyID, err := evidencebundle.ParsePublicKeyHexFile(keyData)
+	if err != nil {
+		return err
+	}
+	sigPath := *signaturePath
+	if sigPath == "" {
+		sigPath = bundlePath + ".sig"
+	}
+	sigData, err := readSmallRegularFile(sigPath, maxEvidenceSignatureBytes, "evidence signature")
+	if err != nil {
+		return err
+	}
+	signature, err := evidencebundle.DecodeSignatureStrict(sigData)
+	if err != nil {
+		return err
+	}
+	manifest, err := evidencebundle.VerifySignedArchive(bundlePath, signature, publicKey)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "verified signed evidence bundle %s entries=%d signer-key-id=%s bundle-sha256=%s\n", bundlePath, len(manifest.Entries), trustedKeyID, signature.BundleSHA256)
+	return nil
+}
+
 func evidenceEntryFromSpec(spec string) (evidencebundle.Entry, error) {
 	parts := strings.SplitN(spec, ":", 3)
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
@@ -266,6 +359,43 @@ func readEvidenceManifest(path string) (evidencebundle.Manifest, error) {
 		return evidencebundle.Manifest{}, err
 	}
 	return manifest, nil
+}
+
+func readSmallRegularFile(path string, maxBytes int64, label string) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s must be a regular file", label)
+	}
+	if info.Size() > maxBytes {
+		return nil, fmt.Errorf("%s exceeds size limit", label)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	opened, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	current, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !opened.Mode().IsRegular() || !current.Mode().IsRegular() || !os.SameFile(opened, current) {
+		return nil, fmt.Errorf("%s changed before reading", label)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("%s exceeds size limit", label)
+	}
+	return data, nil
 }
 
 func writeNewFile(path string, data []byte, perm os.FileMode) error {
