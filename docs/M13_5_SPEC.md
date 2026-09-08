@@ -1,6 +1,6 @@
 # M13.5 — Evidence trust store and key lifecycle
 
-Status: IMPLEMENTED — code qualification pending CI
+Status: CODE-QUALIFIED — CI #458 passed; hardware/runtime qualification not required
 
 ## Purpose
 
@@ -135,5 +135,7 @@ Automated qualification covers:
 - revoked signer rejection through the CLI;
 - symbolic-link trust-store rejection;
 - complete M13.4 verification after trust resolution.
+
+CI #458 passed the repository format, module metadata, vet, complete Go test suite, AmiGuard compatibility validation and amd64/arm64 builds with the M13.5 implementation present.
 
 Hardware/runtime qualification may later use the same trust-store mechanism with physically acquired M12 evidence, but is not required to code-qualify M13.5.
