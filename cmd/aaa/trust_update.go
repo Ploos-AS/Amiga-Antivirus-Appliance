@@ -15,7 +15,7 @@ const maxEvidenceTrustUpdateBytes = 4096
 
 func trustUpdateCommand(args []string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "trust-update requires a subcommand: sign or verify")
+		fmt.Fprintln(os.Stderr, "trust-update requires a subcommand: sign, verify, install or status")
 		os.Exit(2)
 	}
 	var err error
@@ -24,6 +24,10 @@ func trustUpdateCommand(args []string) {
 		err = runTrustUpdateSign(args[1:], os.Stdout, os.Stderr)
 	case "verify":
 		err = runTrustUpdateVerify(args[1:], os.Stdout, os.Stderr)
+	case "install":
+		err = runTrustUpdateInstall(args[1:], os.Stdout, os.Stderr)
+	case "status":
+		err = runTrustUpdateStatus(args[1:], os.Stdout, os.Stderr)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown trust-update subcommand: %s\n", args[0])
 		os.Exit(2)
