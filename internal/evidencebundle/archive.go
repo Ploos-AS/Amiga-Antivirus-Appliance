@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	ArchiveManifestName      = "manifest.json"
-	maxArchiveManifestBytes  = 4 << 20
-	maxArchiveEntries        = 4096
+	ArchiveManifestName     = "manifest.json"
+	maxArchiveManifestBytes = 4 << 20
+	maxArchiveEntries       = 4096
 )
 
 var archiveTimestamp = time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC)
