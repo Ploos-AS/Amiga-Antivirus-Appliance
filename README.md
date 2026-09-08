@@ -25,6 +25,8 @@ aaa daemon
 aaa evidence create --output evidence.json --entry artifact:artifacts/disk.adf:./disk.adf
 aaa evidence verify evidence.json
 aaa evidence verify-bundle case.aaa-evidence.zip
+aaa evidence ledger verify
+aaa evidence ledger checkpoint verify-installed
 aaa trust-update status
 aaa signatures candidates
 aaa signatures validate
@@ -59,6 +61,7 @@ aaa version
 - **M11** — secure SMB drop-folder workflow, stable-file ingest, immutable staging, daemon watcher, restart-safe ingest receipts and authenticated Samba appliance integration: implementation complete through M11.2 and code-qualified; staging binds the opened source to the observed path with post-open `Lstat`/`SameFile` validation to reject path replacement/symlink races; Orange Pi/DietPi authenticated runtime qualification remains pending. See `docs/M11_QUALIFICATION.md`.
 - **M12.0–M12.6** — Greaseweazle acquisition foundation, hash-bound ADF acquisition, multi-read repeatability, raw SCP flux preservation, same-media acquisition sessions and qualification tooling: implemented and code-qualified with deterministic fake-`gw` coverage; physical Greaseweazle/drive/media qualification remains explicitly pending hardware. See `docs/M12_QUALIFICATION.md`.
 - **M13.0–M13.7** — Portable Evidence Bundles: deterministic manifests and ZIP transport, offline verification, detached Ed25519 signatures, signing-key trust lifecycle, authenticated trust-store updates, replay/rollback protection and crash-safe persistent trust installation: implemented and code-qualified for amd64/arm64; no physical hardware required. See `docs/M13_QUALIFICATION.md`.
+- **M14.0–M14.7** — Authenticated Evidence Ledger: deterministic append-only JSONL chain, object-bound events, full-chain verification, portable Ed25519 checkpoints, checkpoint signer trust lifecycle, root-authenticated trust-store updates, persistent monotonic trust state and installed-policy verification: implemented and code-qualified for amd64/arm64; no physical hardware required. See `docs/M14_QUALIFICATION.md`.
 
 M3 can declare an ADF `infected` when its bootblock exactly matches a known-malicious entry. A known-clean bootblock does not make the whole disk clean, because other malware may be present elsewhere in the disk image.
 
@@ -107,6 +110,8 @@ M9 adds the long-running `aaa daemon`, append-only persistent scan history, loca
 
 M13 makes selected evidence portable without changing its classification. Operators can create deterministic manifests, package exact evidence bytes into deterministic ZIPs, verify them offline, add detached Ed25519 signatures, manage trusted signing keys, authenticate trust-store updates with a separately pinned root key, and persist rollback-resistant trust-update state across restarts. See `docs/M13_QUALIFICATION.md`.
 
+M14 adds a local authenticated evidence-event ledger. Records form a deterministic append-only hash chain, and portable Ed25519 checkpoints can bind independently retained trust to a specific ledger prefix. Checkpoint signer policy has its own trust role, authenticated update chain and persistent monotonic state; `aaa evidence ledger checkpoint verify-installed` consumes the installed policy directly. The ledger is not a blockchain or trusted timestamp service, and suffix deletion is detectable only relative to an independently retained trusted checkpoint. See `docs/M14_QUALIFICATION.md`.
+
 Example fields:
 
 ```text
@@ -134,7 +139,9 @@ M4 enumerates file and directory names, paths, and header-block numbers. M4.1 re
 ├── reports/
 ├── signatures/
 └── state/
-    └── evidence-trust/
+    ├── evidence-trust/
+    ├── evidence-ledger.jsonl
+    └── checkpoint-trust/
 ```
 
 No submitted material is automatically deleted.
@@ -153,7 +160,7 @@ sudo AAA_SMB_PASSWORD_FILE=/root/aaa-smb-password sh scripts/qualify-m11.sh
 sudo sh scripts/qualify-m12.sh
 ```
 
-M10 is not fully appliance-qualified until the automated M10 runtime gate and the visible/manual browser checklist in `docs/M10_5_SPEC.md` have both passed on the Orange Pi Zero 3 / DietPi reference system. M11 is not appliance-qualified until its authenticated SMB3 end-to-end gate has passed on the same reference appliance. M12 is not physically qualified until `scripts/qualify-m12.sh` has passed with a real Greaseweazle, drive and diskette and the resulting acquisition evidence has been retained. M13 requires no additional physical hardware gate; a later real-media export/transfer/offline-verification exercise is optional integration evidence.
+M10 is not fully appliance-qualified until the automated M10 runtime gate and the visible/manual browser checklist in `docs/M10_5_SPEC.md` have both passed on the Orange Pi Zero 3 / DietPi reference system. M11 is not appliance-qualified until its authenticated SMB3 end-to-end gate has passed on the same reference appliance. M12 is not physically qualified until `scripts/qualify-m12.sh` has passed with a real Greaseweazle, drive and diskette and the resulting acquisition evidence has been retained. M13 and M14 require no additional physical hardware gate.
 
 ## Development
 
@@ -186,8 +193,9 @@ The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/
 - M11 SMB drop-folder workflow — code-qualified and path-replacement hardened; appliance runtime qualification pending
 - M12 Greaseweazle integration — implemented through M12.6; physical acquisition qualification pending hardware
 - M13 Portable Evidence Bundles — implemented and code-qualified through M13.7; no physical hardware gate required
+- M14 Authenticated Evidence Ledger — implemented and code-qualified through M14.7; no physical hardware gate required
 
-Until the reference appliance and acquisition hardware are available, the remaining M0/M8/M9/M10/M11/M12 qualification gates are intentionally recorded as hardware/runtime pending rather than simulated as passes. M13 is independently code-qualified and closed.
+Until the reference appliance and acquisition hardware are available, the remaining M0/M8/M9/M10/M11/M12 qualification gates are intentionally recorded as hardware/runtime pending rather than simulated as passes. M13 and M14 are independently code-qualified and closed.
 
 ## License
 
