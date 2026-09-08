@@ -27,6 +27,8 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  aaa acquire-session [--json] [--device <device>] [--gw <path>] [--timeout <duration>] [--reads <n>] [--note <text>] <output-prefix>\n")
 	fmt.Fprintf(os.Stderr, "  aaa evidence create --output <manifest.json> --entry <kind:name:path> [--entry ...] [--note <text>]\n")
 	fmt.Fprintf(os.Stderr, "  aaa evidence verify [--root <dir>] <manifest.json>\n")
+	fmt.Fprintf(os.Stderr, "  aaa trust-update sign --root-private-key <file> --sequence <n> --output <update.json> <trust-store.json>\n")
+	fmt.Fprintf(os.Stderr, "  aaa trust-update verify --root-public-key <file> [--current-sequence <n>] <trust-store.json> <update.json>\n")
 	fmt.Fprintf(os.Stderr, "  aaa daemon [--workers <n>] [--queue-depth <n>] [--state-root <dir>] [--incoming-root <dir>] [--max-upload-bytes <n>] [--listen <addr>]\n")
 	fmt.Fprintf(os.Stderr, "  aaa support identify --kind <kind> --version <version> [--name <name>] [--source <source>] <file>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures candidates [--json]\n")
@@ -63,6 +65,8 @@ func main() {
 		acquireSessionCommand(os.Args[2:])
 	case "evidence":
 		evidenceCommand(os.Args[2:])
+	case "trust-update":
+		trustUpdateCommand(os.Args[2:])
 	case "daemon":
 		daemonCommand(os.Args[2:])
 	case "support":
