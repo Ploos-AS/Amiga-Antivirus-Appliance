@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/evidencebundle"
 )
@@ -24,11 +25,12 @@ func runTrustUpdateInstall(args []string, stdout, stderr io.Writer) error {
 	fs := newTrustUpdateInstallFlagSet(stderr)
 	rootPublicPath := fs.String("root-public-key", "", "independently pinned root Ed25519 public key file")
 	stateRoot := fs.String("state-root", defaultEvidenceTrustStateRoot, "persistent evidence trust state directory")
+	ledger := fs.String("ledger", "", "optional evidence ledger path")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 || *rootPublicPath == "" {
-		return errors.New("requires --root-public-key <file> [--state-root <dir>] <trust-store.json> <update.json>")
+		return errors.New("requires --root-public-key <file> [--state-root <dir>] [--ledger <path>] <trust-store.json> <update.json>")
 	}
 
 	rootKeyData, err := readSmallRegularFile(*rootPublicPath, maxEvidenceKeyFileBytes, "pinned root public key")
@@ -73,7 +75,11 @@ func runTrustUpdateInstall(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "installed trust update sequence=%d previous=%d keys=%d root-key-id=%s trust-store=%s\n", installed.Sequence, currentSequence, len(store.Keys), rootID, filepath.Join(*stateRoot, installed.TrustStoreFile))
+	installedStorePath := filepath.Join(*stateRoot, installed.TrustStoreFile)
+	if err := recordLedgerTrustStoreInstalled(*ledger, installedStorePath, time.Now()); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "installed trust update sequence=%d previous=%d keys=%d root-key-id=%s trust-store=%s\n", installed.Sequence, currentSequence, len(store.Keys), rootID, installedStorePath)
 	return nil
 }
 
