@@ -28,7 +28,7 @@ func (v *evidenceEntrySpecs) Set(value string) error {
 
 func evidenceCommand(args []string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "evidence requires a subcommand: create or verify")
+		fmt.Fprintln(os.Stderr, "evidence requires a subcommand: create, verify, pack or verify-bundle")
 		os.Exit(2)
 	}
 	switch args[0] {
@@ -40,6 +40,16 @@ func evidenceCommand(args []string) {
 	case "verify":
 		if err := runEvidenceVerify(args[1:], os.Stdout, os.Stderr); err != nil {
 			fmt.Fprintf(os.Stderr, "evidence verify failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "pack":
+		if err := runEvidencePack(args[1:], os.Stdout, os.Stderr); err != nil {
+			fmt.Fprintf(os.Stderr, "evidence pack failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "verify-bundle":
+		if err := runEvidenceVerifyBundle(args[1:], os.Stdout, os.Stderr); err != nil {
+			fmt.Fprintf(os.Stderr, "evidence verify-bundle failed: %v\n", err)
 			os.Exit(1)
 		}
 	default:
@@ -118,6 +128,59 @@ func runEvidenceVerify(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
+func runEvidencePack(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("evidence pack", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	manifestPath := fs.String("manifest", "", "evidence manifest to package")
+	root := fs.String("root", "", "root directory containing manifest entries (default: manifest directory)")
+	output := fs.String("output", "", "new portable evidence ZIP path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 || *manifestPath == "" || *output == "" {
+		return errors.New("requires --manifest <manifest.json> --output <bundle.zip>")
+	}
+	manifest, err := readEvidenceManifest(*manifestPath)
+	if err != nil {
+		return err
+	}
+	bundleRoot := *root
+	if bundleRoot == "" {
+		bundleRoot = filepath.Dir(*manifestPath)
+	}
+	if err := evidencebundle.CreateArchive(manifest, bundleRoot, *output); err != nil {
+		return err
+	}
+	sha, size, err := hashRegularFile(*output)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "packed evidence bundle %s entries=%d bytes=%d sha256=%s\n", *output, len(manifest.Entries), size, sha)
+	return nil
+}
+
+func runEvidenceVerifyBundle(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("evidence verify-bundle", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("requires exactly one portable evidence bundle path")
+	}
+	path := fs.Arg(0)
+	manifest, err := evidencebundle.VerifyArchive(path)
+	if err != nil {
+		return err
+	}
+	sha, size, err := hashRegularFile(path)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "verified evidence bundle %s entries=%d bytes=%d sha256=%s\n", path, len(manifest.Entries), size, sha)
+	return nil
+}
+
 func evidenceEntryFromSpec(spec string) (evidencebundle.Entry, error) {
 	parts := strings.SplitN(spec, ":", 3)
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
@@ -190,6 +253,13 @@ func readEvidenceManifest(path string) (evidencebundle.Manifest, error) {
 	dec := json.NewDecoder(strings.NewReader(string(data)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&manifest); err != nil {
+		return evidencebundle.Manifest{}, err
+	}
+	var extra any
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return evidencebundle.Manifest{}, errors.New("manifest contains trailing JSON data")
+		}
 		return evidencebundle.Manifest{}, err
 	}
 	if err := manifest.Validate(); err != nil {
