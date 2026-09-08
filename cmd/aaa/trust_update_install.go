@@ -181,8 +181,8 @@ func installVerifiedTrustStore(root string, storeData []byte, update evidencebun
 	state := evidencebundle.TrustUpdateState{
 		Schema:            evidencebundle.TrustUpdateStateSchema,
 		Sequence:          update.Sequence,
-		TrustStoreSHA256: update.TrustStoreSHA256,
-		TrustStoreFile:   storeFile,
+		TrustStoreSHA256:  update.TrustStoreSHA256,
+		TrustStoreFile:    storeFile,
 		RootKeyID:         update.RootKeyID,
 	}
 	stateData, err := state.MarshalDeterministic()
