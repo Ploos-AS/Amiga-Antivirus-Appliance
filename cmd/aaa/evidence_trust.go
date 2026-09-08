@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/evidencebundle"
@@ -94,13 +93,3 @@ func readEvidenceTrustStore(path string) (evidencebundle.TrustStore, error) {
 	}
 	return evidencebundle.DecodeTrustStoreStrict(data)
 }
-
-func writeEvidenceTrustStore(path string, store evidencebundle.TrustStore) error {
-	data, err := store.MarshalDeterministic()
-	if err != nil {
-		return err
-	}
-	return writeNewFile(path, data, 0o640)
-}
-
-var _ = os.FileMode(0)
