@@ -140,12 +140,19 @@ func SignArchive(path string, privateKey ed25519.PrivateKey) (Signature, error) 
 	if len(privateKey) != ed25519.PrivateKeySize {
 		return Signature{}, errors.New("invalid Ed25519 private key length")
 	}
+	before, err := archiveSHA256(path)
+	if err != nil {
+		return Signature{}, err
+	}
 	if _, err := VerifyArchive(path); err != nil {
 		return Signature{}, fmt.Errorf("evidence archive verification failed before signing: %w", err)
 	}
-	digest, err := archiveSHA256(path)
+	after, err := archiveSHA256(path)
 	if err != nil {
 		return Signature{}, err
+	}
+	if before != after {
+		return Signature{}, errors.New("evidence archive changed while validating for signing")
 	}
 	publicKey, ok := privateKey.Public().(ed25519.PublicKey)
 	if !ok {
@@ -155,7 +162,7 @@ func SignArchive(path string, privateKey ed25519.PrivateKey) (Signature, error) 
 	if err != nil {
 		return Signature{}, err
 	}
-	s := Signature{Schema: SignatureSchema, Algorithm: SignatureAlgorithm, BundleSHA256: digest, SignerKeyID: keyID}
+	s := Signature{Schema: SignatureSchema, Algorithm: SignatureAlgorithm, BundleSHA256: after, SignerKeyID: keyID}
 	s.Signature = hex.EncodeToString(ed25519.Sign(privateKey, signatureMessage(s)))
 	if err := s.Validate(); err != nil {
 		return Signature{}, err
@@ -179,16 +186,23 @@ func VerifySignedArchive(path string, signature Signature, trusted ed25519.Publi
 	if trustedID != signature.SignerKeyID {
 		return Manifest{}, errors.New("trusted public key does not match signer_key_id")
 	}
+	before, err := archiveSHA256(path)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if before != signature.BundleSHA256 {
+		return Manifest{}, errors.New("evidence bundle SHA-256 does not match detached signature")
+	}
 	manifest, err := VerifyArchive(path)
 	if err != nil {
 		return Manifest{}, err
 	}
-	digest, err := archiveSHA256(path)
+	after, err := archiveSHA256(path)
 	if err != nil {
 		return Manifest{}, err
 	}
-	if digest != signature.BundleSHA256 {
-		return Manifest{}, errors.New("evidence bundle SHA-256 does not match detached signature")
+	if before != after {
+		return Manifest{}, errors.New("evidence archive changed during signed verification")
 	}
 	sigBytes, _ := hex.DecodeString(signature.Signature)
 	if !ed25519.Verify(trusted, signatureMessage(signature), sigBytes) {
@@ -202,21 +216,33 @@ func signatureMessage(s Signature) []byte {
 }
 
 func archiveSHA256(path string) (string, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return "", err
-	}
-	if !info.Mode().IsRegular() {
-		return "", errors.New("evidence archive must be a regular file")
-	}
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	opened, err := f.Stat()
+	if err != nil {
 		return "", err
+	}
+	current, err := os.Lstat(path)
+	if err != nil {
+		return "", err
+	}
+	if !opened.Mode().IsRegular() || !current.Mode().IsRegular() || !os.SameFile(opened, current) {
+		return "", errors.New("evidence archive must remain the same regular file while opened")
+	}
+	h := sha256.New()
+	n, err := io.Copy(h, f)
+	if err != nil {
+		return "", err
+	}
+	finished, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if n != opened.Size() || finished.Size() != opened.Size() || !finished.ModTime().Equal(opened.ModTime()) {
+		return "", errors.New("evidence archive changed while hashing")
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
