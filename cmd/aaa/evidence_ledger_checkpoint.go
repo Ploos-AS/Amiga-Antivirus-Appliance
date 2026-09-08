@@ -20,7 +20,7 @@ const (
 
 func runEvidenceLedgerCheckpoint(args []string, stdout, stderr io.Writer) error {
 	if len(args) < 1 {
-		return errors.New("ledger checkpoint requires a subcommand: sign, verify, trust, verify-trusted or trust-update")
+		return errors.New("ledger checkpoint requires a subcommand: sign, verify, trust, verify-trusted, verify-installed or trust-update")
 	}
 	switch args[0] {
 	case "sign":
@@ -31,6 +31,8 @@ func runEvidenceLedgerCheckpoint(args []string, stdout, stderr io.Writer) error 
 		return runEvidenceLedgerCheckpointTrust(args[1:], stdout, stderr)
 	case "verify-trusted":
 		return runEvidenceLedgerCheckpointVerifyTrusted(args[1:], stdout, stderr, time.Now)
+	case "verify-installed":
+		return runEvidenceLedgerCheckpointVerifyInstalled(args[1:], stdout, stderr, time.Now)
 	case "trust-update":
 		return runEvidenceLedgerCheckpointTrustUpdate(args[1:], stdout, stderr)
 	default:
