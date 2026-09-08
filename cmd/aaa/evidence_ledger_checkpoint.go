@@ -7,22 +7,30 @@ import (
 	"io"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/evidencebundle"
 	"github.com/Ploos-AS/Amiga-Antivirus-Appliance/internal/evidenceledger"
 )
 
-const maxLedgerCheckpointBytes = 4096
+const (
+	maxLedgerCheckpointBytes           = 4096
+	maxLedgerCheckpointTrustStoreBytes = 1 << 20
+)
 
 func runEvidenceLedgerCheckpoint(args []string, stdout, stderr io.Writer) error {
 	if len(args) < 1 {
-		return errors.New("ledger checkpoint requires a subcommand: sign or verify")
+		return errors.New("ledger checkpoint requires a subcommand: sign, verify, trust or verify-trusted")
 	}
 	switch args[0] {
 	case "sign":
 		return runEvidenceLedgerCheckpointSign(args[1:], stdout, stderr)
 	case "verify":
 		return runEvidenceLedgerCheckpointVerify(args[1:], stdout, stderr)
+	case "trust":
+		return runEvidenceLedgerCheckpointTrust(args[1:], stdout, stderr)
+	case "verify-trusted":
+		return runEvidenceLedgerCheckpointVerifyTrusted(args[1:], stdout, stderr, time.Now)
 	default:
 		return fmt.Errorf("unknown ledger checkpoint subcommand: %s", args[0])
 	}
@@ -116,6 +124,94 @@ func runEvidenceLedgerCheckpointVerify(args []string, stdout, stderr io.Writer) 
 	}
 	fmt.Fprintf(stdout, "verified evidence ledger checkpoint %s checkpoint-sequence=%d ledger-tail-sequence=%d signer-key-id=%s\n", path, checkpoint.Sequence, verification.TailSequence, trustedKeyID)
 	return nil
+}
+
+func runEvidenceLedgerCheckpointTrust(args []string, stdout, stderr io.Writer) error {
+	if len(args) < 1 {
+		return errors.New("checkpoint trust requires a subcommand: validate")
+	}
+	if args[0] != "validate" {
+		return fmt.Errorf("unknown checkpoint trust subcommand: %s", args[0])
+	}
+	fs := flag.NewFlagSet("evidence ledger checkpoint trust validate", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("requires exactly one checkpoint trust-store path")
+	}
+	store, err := readCheckpointTrustStore(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	active, revoked := 0, 0
+	for _, key := range store.Keys {
+		switch key.Status {
+		case evidenceledger.CheckpointTrustKeyActive:
+			active++
+		case evidenceledger.CheckpointTrustKeyRevoked:
+			revoked++
+		}
+	}
+	fmt.Fprintf(stdout, "validated checkpoint trust store %s keys=%d active=%d revoked=%d\n", fs.Arg(0), len(store.Keys), active, revoked)
+	return nil
+}
+
+func runEvidenceLedgerCheckpointVerifyTrusted(args []string, stdout, stderr io.Writer, now func() time.Time) error {
+	fs := flag.NewFlagSet("evidence ledger checkpoint verify-trusted", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	ledgerPath := fs.String("ledger", defaultEvidenceLedgerPath, "evidence ledger path")
+	trustStorePath := fs.String("trust-store", "", "operator-supplied checkpoint trust store")
+	checkpointPath := fs.String("checkpoint", "", "checkpoint path (default: LEDGER.checkpoint.json)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 || *trustStorePath == "" {
+		return errors.New("requires --trust-store <store.json>")
+	}
+	store, err := readCheckpointTrustStore(*trustStorePath)
+	if err != nil {
+		return err
+	}
+	path := *checkpointPath
+	if path == "" {
+		path = *ledgerPath + ".checkpoint.json"
+	}
+	checkpointData, err := readSmallRegularFile(path, maxLedgerCheckpointBytes, "ledger checkpoint")
+	if err != nil {
+		return err
+	}
+	checkpoint, err := evidenceledger.DecodeCheckpointStrict(checkpointData)
+	if err != nil {
+		return err
+	}
+	ledger, err := readEvidenceLedgerBytes(*ledgerPath)
+	if err != nil {
+		return err
+	}
+	key, err := evidenceledger.VerifyLedgerAgainstCheckpointTrustStore(ledger, checkpoint, store, now().UTC())
+	if err != nil {
+		return err
+	}
+	verification, err := evidenceledger.Verify(ledger)
+	if err != nil {
+		return err
+	}
+	label := key.Label
+	if label == "" {
+		label = "-"
+	}
+	fmt.Fprintf(stdout, "verified trusted evidence ledger checkpoint %s checkpoint-sequence=%d ledger-tail-sequence=%d signer-key-id=%s signer-label=%s\n", path, checkpoint.Sequence, verification.TailSequence, key.KeyID, label)
+	return nil
+}
+
+func readCheckpointTrustStore(path string) (evidenceledger.CheckpointTrustStore, error) {
+	data, err := readSmallRegularFile(path, maxLedgerCheckpointTrustStoreBytes, "checkpoint trust store")
+	if err != nil {
+		return evidenceledger.CheckpointTrustStore{}, err
+	}
+	return evidenceledger.DecodeCheckpointTrustStoreStrict(data)
 }
 
 func readEvidenceLedgerBytes(path string) ([]byte, error) {
