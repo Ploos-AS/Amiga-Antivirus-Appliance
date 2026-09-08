@@ -140,3 +140,80 @@ func TestReadEvidenceManifestRejectsUnknownFieldsAndOversize(t *testing.T) {
 		t.Fatal("oversize manifest accepted")
 	}
 }
+
+func TestReadEvidenceManifestRejectsTrailingJSON(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "trailing.json")
+	data := `{"schema":"aaa-evidence-bundle-v1","created_at":"2026-09-08T00:00:00Z","aaa_version":"test","entries":[{"name":"a","kind":"artifact","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":0}]} {}`
+	if err := os.WriteFile(path, []byte(data), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readEvidenceManifest(path); err == nil {
+		t.Fatal("trailing JSON data accepted")
+	}
+}
+
+func TestRunEvidencePackAndVerifyBundle(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "artifacts"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	artifact := filepath.Join(root, "artifacts", "disk.adf")
+	if err := os.WriteFile(artifact, []byte("amiga evidence"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(root, "case.json")
+	if err := runEvidenceCreate([]string{
+		"--output", manifestPath,
+		"--entry", "artifact:artifacts/disk.adf:" + artifact,
+	}, &bytes.Buffer{}, &bytes.Buffer{}, time.Now); err != nil {
+		t.Fatal(err)
+	}
+
+	bundlePath := filepath.Join(t.TempDir(), "case.aaa-evidence.zip")
+	var packOut bytes.Buffer
+	if err := runEvidencePack([]string{
+		"--manifest", manifestPath,
+		"--root", root,
+		"--output", bundlePath,
+	}, &packOut, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(packOut.String(), "packed evidence bundle") || !strings.Contains(packOut.String(), "sha256=") {
+		t.Fatalf("pack output=%q", packOut.String())
+	}
+
+	var verifyOut bytes.Buffer
+	if err := runEvidenceVerifyBundle([]string{bundlePath}, &verifyOut, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(verifyOut.String(), "verified evidence bundle") || !strings.Contains(verifyOut.String(), "entries=1") {
+		t.Fatalf("verify-bundle output=%q", verifyOut.String())
+	}
+}
+
+func TestRunEvidencePackIsWriteOnce(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "sample.bin")
+	if err := os.WriteFile(source, []byte("sample"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(root, "manifest.json")
+	if err := runEvidenceCreate([]string{"--output", manifestPath, "--entry", "artifact:sample.bin:" + source}, &bytes.Buffer{}, &bytes.Buffer{}, time.Now); err != nil {
+		t.Fatal(err)
+	}
+	bundle := filepath.Join(t.TempDir(), "bundle.zip")
+	if err := os.WriteFile(bundle, []byte("keep"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := runEvidencePack([]string{"--manifest", manifestPath, "--root", root, "--output", bundle}, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
+		t.Fatal("existing bundle was overwritten")
+	}
+	got, err := os.ReadFile(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "keep" {
+		t.Fatalf("existing bundle changed: %q", got)
+	}
+}
