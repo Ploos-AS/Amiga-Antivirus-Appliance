@@ -1,6 +1,6 @@
 # M13.6 — Authenticated trust-store updates
 
-Status: IMPLEMENTED — code qualification pending CI
+Status: CODE-QUALIFIED — CI #465 PASS
 
 ## Purpose
 
@@ -138,3 +138,5 @@ Automated qualification covers:
 - write-once update output;
 - strict regular-file/key parsing inherited from existing evidence CLI helpers;
 - amd64 and arm64 build qualification through the normal repository CI.
+
+CI #465 passed the complete repository gate, including format, vet, tests, AmiGuard compatibility, amd64 build and arm64 build.
