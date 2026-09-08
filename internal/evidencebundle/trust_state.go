@@ -13,11 +13,11 @@ const TrustUpdateStateSchema = "aaa-evidence-trust-update-state-v1"
 // TrustUpdateState records the last durably installed authenticated trust store.
 // TrustStoreFile is a basename within the operator-controlled state directory.
 type TrustUpdateState struct {
-	Schema          string `json:"schema"`
-	Sequence        uint64 `json:"sequence"`
+	Schema           string `json:"schema"`
+	Sequence         uint64 `json:"sequence"`
 	TrustStoreSHA256 string `json:"trust_store_sha256"`
-	TrustStoreFile  string `json:"trust_store_file"`
-	RootKeyID       string `json:"root_key_id"`
+	TrustStoreFile   string `json:"trust_store_file"`
+	RootKeyID        string `json:"root_key_id"`
 }
 
 func TrustStoreFilename(sequence uint64) (string, error) {
