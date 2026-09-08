@@ -1,6 +1,6 @@
 # M13.4 — Detached evidence-bundle signatures
 
-Status: IMPLEMENTED — code qualification pending CI
+Status: CODE-QUALIFIED — CI #449 passed; no physical hardware required
 
 ## Purpose
 
@@ -84,7 +84,9 @@ Signature output is write-once and will not replace an existing file.
 
 Before signing, AAA performs the complete M13.3 `VerifyArchive` gate. Invalid evidence bundles are not signed.
 
-Signing then computes the SHA-256 of the exact ZIP bytes and produces the detached Ed25519 signature. The bundle itself is never modified, preserving M13.3 deterministic archive identity.
+Signing computes the archive SHA-256 before and after M13.3 validation and refuses to sign if the identity changes while validation is in progress. The archive hash routine also binds the opened descriptor to the current regular-file path with post-open `Lstat`/`SameFile` checks and detects size/mtime changes while hashing.
+
+The bundle itself is never modified, preserving M13.3 deterministic archive identity.
 
 ## Verification gate
 
@@ -92,9 +94,10 @@ Signed verification is entirely offline and must succeed only when all of the fo
 
 1. the detached signature document is structurally valid;
 2. the supplied trusted public key is valid and its derived key ID equals `signer_key_id`;
-3. the M13.3 archive structure, manifest and all declared evidence hashes validate;
-4. the SHA-256 of the complete ZIP matches `bundle_sha256`;
-5. the Ed25519 signature verifies over the domain-separated signed statement.
+3. the pre-validation SHA-256 of the complete ZIP matches `bundle_sha256`;
+4. the M13.3 archive structure, manifest and all declared evidence hashes validate;
+5. the archive SHA-256 remains unchanged across the validation gate;
+6. the Ed25519 signature verifies over the domain-separated signed statement.
 
 A failure in any gate is a verification failure. No bundled content is extracted or executed.
 
@@ -109,6 +112,8 @@ Private keys and detached signature files are required to be ordinary regular fi
 ## Qualification
 
 No physical hardware is required for M13.4 code qualification.
+
+CI #449 passed the complete repository gate, including format checks, `go vet`, Go tests, AmiGuard compatibility validation, and amd64/arm64 builds.
 
 Automated qualification covers:
 
