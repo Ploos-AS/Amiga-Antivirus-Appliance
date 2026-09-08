@@ -1,6 +1,6 @@
 # M13.7 — Persistent trust-update state and crash-safe installation
 
-Status: IMPLEMENTED — code qualification pending final CI
+Status: IMPLEMENTED — code-qualified
 
 ## Purpose
 
