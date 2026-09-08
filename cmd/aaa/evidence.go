@@ -32,7 +32,7 @@ func (v *evidenceEntrySpecs) Set(value string) error {
 
 func evidenceCommand(args []string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "evidence requires a subcommand: create, verify, pack, verify-bundle, sign or verify-signed")
+		fmt.Fprintln(os.Stderr, "evidence requires a subcommand: create, verify, pack, verify-bundle, sign, verify-signed, trust or verify-trusted")
 		os.Exit(2)
 	}
 	switch args[0] {
@@ -64,6 +64,16 @@ func evidenceCommand(args []string) {
 	case "verify-signed":
 		if err := runEvidenceVerifySigned(args[1:], os.Stdout, os.Stderr); err != nil {
 			fmt.Fprintf(os.Stderr, "evidence verify-signed failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "trust":
+		if err := runEvidenceTrust(args[1:], os.Stdout, os.Stderr); err != nil {
+			fmt.Fprintf(os.Stderr, "evidence trust failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "verify-trusted":
+		if err := runEvidenceVerifyTrusted(args[1:], os.Stdout, os.Stderr, time.Now); err != nil {
+			fmt.Fprintf(os.Stderr, "evidence verify-trusted failed: %v\n", err)
 			os.Exit(1)
 		}
 	default:
