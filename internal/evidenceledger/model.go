@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -30,10 +31,10 @@ const (
 type ObjectKind string
 
 const (
-	ObjectEvidenceManifest   ObjectKind = "evidence-manifest"
-	ObjectEvidenceBundle     ObjectKind = "evidence-bundle"
-	ObjectEvidenceSignature  ObjectKind = "evidence-signature"
-	ObjectEvidenceTrustStore ObjectKind = "evidence-trust-store"
+	ObjectEvidenceManifest    ObjectKind = "evidence-manifest"
+	ObjectEvidenceBundle      ObjectKind = "evidence-bundle"
+	ObjectEvidenceSignature   ObjectKind = "evidence-signature"
+	ObjectEvidenceTrustStore  ObjectKind = "evidence-trust-store"
 	ObjectEvidenceTrustUpdate ObjectKind = "evidence-trust-update"
 )
 
@@ -50,9 +51,9 @@ type Record struct {
 }
 
 type Verification struct {
-	Records        uint64
-	TailSequence   uint64
-	TailLineSHA256 string
+	Records          uint64
+	TailSequence     uint64
+	TailLineSHA256   string
 	TailRecordSHA256 string
 }
 
@@ -74,9 +75,7 @@ func BuildRecord(sequence uint64, recordedAt time.Time, event Event, objectKind 
 	if recordedAt.IsZero() {
 		return Record{}, errors.New("ledger recorded_at must not be zero")
 	}
-	if recordedAt.Location() != time.UTC {
-		recordedAt = recordedAt.UTC()
-	}
+	recordedAt = recordedAt.UTC()
 	record := Record{
 		Schema:               Schema,
 		Sequence:             sequence,
@@ -169,23 +168,7 @@ func DecodeRecordStrict(line []byte) (Record, error) {
 	if bytes.ContainsAny(line, "\r\n") {
 		return Record{}, errors.New("ledger record input must be one JSON line without line terminator")
 	}
-	var record Record
-	dec := json.NewDecoder(bytes.NewReader(line))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&record); err != nil {
-		return Record{}, err
-	}
-	var extra any
-	if err := dec.Decode(&extra); !errors.Is(err, fmt.Errorf("EOF")) {
-		// The comparison above cannot match wrapped EOF values; handle the concrete EOF below.
-	}
-	if dec.More() {
-		return Record{}, errors.New("ledger record contains trailing JSON data")
-	}
-	if err := record.Validate(); err != nil {
-		return Record{}, err
-	}
-	return record, nil
+	return decodeRecordStrict(line)
 }
 
 func Verify(data []byte) (Verification, error) {
@@ -218,9 +201,10 @@ func Verify(data []byte) (Verification, error) {
 			return Verification{}, fmt.Errorf("ledger record %d previous-record link mismatch", i+1)
 		}
 		previousLine = append(previousLine[:0], line...)
+		lineWithLF := append(append([]byte(nil), line...), '\n')
 		result.Records = expectedSequence
 		result.TailSequence = record.Sequence
-		result.TailLineSHA256 = sha256Hex(append(append([]byte(nil), line...), '\n'))
+		result.TailLineSHA256 = sha256Hex(lineWithLF)
 		result.TailRecordSHA256 = record.RecordSHA256
 	}
 	return result, nil
@@ -233,8 +217,12 @@ func decodeRecordStrict(line []byte) (Record, error) {
 	if err := dec.Decode(&record); err != nil {
 		return Record{}, err
 	}
-	if dec.More() {
-		return Record{}, errors.New("ledger record contains trailing JSON data")
+	var extra any
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return Record{}, errors.New("ledger record contains trailing JSON data")
+		}
+		return Record{}, err
 	}
 	if err := record.Validate(); err != nil {
 		return Record{}, err
