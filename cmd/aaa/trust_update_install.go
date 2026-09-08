@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -97,7 +98,6 @@ func runTrustUpdateStatus(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-// Small wrappers keep flag construction local without widening trust_update.go imports.
 func newTrustUpdateInstallFlagSet(stderr io.Writer) *flag.FlagSet {
 	fs := flag.NewFlagSet("trust-update install", flag.ContinueOnError)
 	fs.SetOutput(stderr)
