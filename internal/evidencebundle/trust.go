@@ -28,13 +28,13 @@ type TrustStore struct {
 
 // TrustKey binds one raw Ed25519 public key to an explicit trust status.
 type TrustKey struct {
-	KeyID      string     `json:"key_id"`
-	PublicKey  string     `json:"public_key"`
-	Status     string     `json:"status"`
-	Label      string     `json:"label,omitempty"`
-	NotBefore  *time.Time `json:"not_before,omitempty"`
-	NotAfter   *time.Time `json:"not_after,omitempty"`
-	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	KeyID     string     `json:"key_id"`
+	PublicKey string     `json:"public_key"`
+	Status    string     `json:"status"`
+	Label     string     `json:"label,omitempty"`
+	NotBefore *time.Time `json:"not_before,omitempty"`
+	NotAfter  *time.Time `json:"not_after,omitempty"`
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 }
 
 func (k TrustKey) Validate() error {
