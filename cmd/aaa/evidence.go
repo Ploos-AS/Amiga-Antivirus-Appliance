@@ -163,6 +163,7 @@ func runEvidencePack(args []string, stdout, stderr io.Writer) error {
 	manifestPath := fs.String("manifest", "", "evidence manifest to package")
 	root := fs.String("root", "", "root directory containing manifest entries (default: manifest directory)")
 	output := fs.String("output", "", "new portable evidence ZIP path")
+	ledger := fs.String("ledger", "", "optional evidence ledger path")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -184,6 +185,9 @@ func runEvidencePack(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if err := recordLedgerBundleCreated(*ledger, *output, time.Now()); err != nil {
+		return err
+	}
 	fmt.Fprintf(stdout, "packed evidence bundle %s entries=%d bytes=%d sha256=%s\n", *output, len(manifest.Entries), size, sha)
 	return nil
 }
@@ -191,6 +195,7 @@ func runEvidencePack(args []string, stdout, stderr io.Writer) error {
 func runEvidenceVerifyBundle(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("evidence verify-bundle", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	ledger := fs.String("ledger", "", "optional evidence ledger path")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -206,6 +211,9 @@ func runEvidenceVerifyBundle(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if err := recordLedgerBundleVerified(*ledger, path, time.Now()); err != nil {
+		return err
+	}
 	fmt.Fprintf(stdout, "verified evidence bundle %s entries=%d bytes=%d sha256=%s\n", path, len(manifest.Entries), size, sha)
 	return nil
 }
@@ -215,6 +223,7 @@ func runEvidenceSign(args []string, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 	privateKeyPath := fs.String("private-key", "", "file containing one lowercase hex Ed25519 private key")
 	output := fs.String("output", "", "new detached signature path (default: BUNDLE.sig)")
+	ledger := fs.String("ledger", "", "optional evidence ledger path")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -243,6 +252,9 @@ func runEvidenceSign(args []string, stdout, stderr io.Writer) error {
 		signaturePath = bundlePath + ".sig"
 	}
 	if err := writeNewFile(signaturePath, data, 0o640); err != nil {
+		return err
+	}
+	if err := recordLedgerBundleSigned(*ledger, signaturePath, time.Now()); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "signed evidence bundle %s signature=%s signer-key-id=%s bundle-sha256=%s\n", bundlePath, signaturePath, signature.SignerKeyID, signature.BundleSHA256)
