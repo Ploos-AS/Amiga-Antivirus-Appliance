@@ -29,6 +29,8 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  aaa evidence verify [--root <dir>] <manifest.json>\n")
 	fmt.Fprintf(os.Stderr, "  aaa trust-update sign --root-private-key <file> --sequence <n> --output <update.json> <trust-store.json>\n")
 	fmt.Fprintf(os.Stderr, "  aaa trust-update verify --root-public-key <file> [--current-sequence <n>] <trust-store.json> <update.json>\n")
+	fmt.Fprintf(os.Stderr, "  aaa trust-update install --root-public-key <file> [--state-root <dir>] <trust-store.json> <update.json>\n")
+	fmt.Fprintf(os.Stderr, "  aaa trust-update status [--state-root <dir>]\n")
 	fmt.Fprintf(os.Stderr, "  aaa daemon [--workers <n>] [--queue-depth <n>] [--state-root <dir>] [--incoming-root <dir>] [--max-upload-bytes <n>] [--listen <addr>]\n")
 	fmt.Fprintf(os.Stderr, "  aaa support identify --kind <kind> --version <version> [--name <name>] [--source <source>] <file>\n")
 	fmt.Fprintf(os.Stderr, "  aaa signatures candidates [--json]\n")
