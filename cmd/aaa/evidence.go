@@ -29,7 +29,7 @@ func (v *evidenceEntrySpecs) Set(value string) error { *v = append(*v, value); r
 
 func evidenceCommand(args []string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "evidence requires a subcommand: create, verify, pack, verify-bundle, sign, verify-signed, trust, verify-trusted, ledger, replicate or replica")
+		fmt.Fprintln(os.Stderr, "evidence requires a subcommand: create, verify, pack, verify-bundle, sign, verify-signed, trust, verify-trusted, ledger, replicate, replicate-session or replica")
 		os.Exit(2)
 	}
 	switch args[0] {
@@ -81,6 +81,11 @@ func evidenceCommand(args []string) {
 	case "replicate":
 		if err := runEvidenceReplicate(args[1:], os.Stdout, os.Stderr, time.Now); err != nil {
 			fmt.Fprintf(os.Stderr, "evidence replicate failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "replicate-session":
+		if err := runEvidenceReplicateSession(args[1:], os.Stdout, os.Stderr, time.Now); err != nil {
+			fmt.Fprintf(os.Stderr, "evidence replicate-session failed: %v\n", err)
 			os.Exit(1)
 		}
 	case "replica":
