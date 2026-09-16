@@ -69,8 +69,12 @@ func (r Receipt) Validate() error {
 	if r.Size < 0 {
 		return errors.New("replica object size must be non-negative")
 	}
-	if _, err := time.Parse(time.RFC3339Nano, r.CreatedAt); err != nil {
+	created, err := time.Parse(time.RFC3339Nano, r.CreatedAt)
+	if err != nil {
 		return fmt.Errorf("invalid created_at: %w", err)
+	}
+	if r.CreatedAt != created.UTC().Format(time.RFC3339Nano) {
+		return errors.New("created_at must use canonical UTC RFC3339Nano form")
 	}
 	expected, _ := ObjectName(r.SHA256)
 	if r.ReplicaName != expected || path.IsAbs(r.ReplicaName) || strings.Contains(r.ReplicaName, "\\") {
