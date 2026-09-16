@@ -102,6 +102,33 @@ func TestReplicaRejectsNamespaceSymlink(t *testing.T) {
 	}
 }
 
+func TestReplicaVerifyRejectsNamespaceSymlink(t *testing.T) {
+	root, source, r := replicaFixture(t)
+	if err := replicateObject(source, root, r); err != nil {
+		t.Fatal(err)
+	}
+	receiptData, err := r.MarshalDeterministic()
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := filepath.Join(filepath.Dir(root), "receipt.json")
+	if err := os.WriteFile(receipt, receiptData, 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	namespace := filepath.Join(root, "aaa-replica-v1")
+	moved := filepath.Join(filepath.Dir(root), "moved-namespace")
+	if err := os.Rename(namespace, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(moved, namespace); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if err := runEvidenceReplica([]string{"verify", "--root", root, receipt}, os.Stdout, os.Stderr); err == nil {
+		t.Fatal("expected verify to reject namespace symlink")
+	}
+}
+
 func TestReplicaVerifyDetectsTamperAndMissingObject(t *testing.T) {
 	root, source, r := replicaFixture(t)
 	if err := replicateObject(source, root, r); err != nil {
