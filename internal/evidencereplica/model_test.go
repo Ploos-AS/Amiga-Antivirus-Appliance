@@ -54,6 +54,8 @@ func TestReceiptRejectsInvalidValues(t *testing.T) {
 		{"kind", func(r *Receipt) { r.ObjectKind = "unknown" }},
 		{"uppercase sha", func(r *Receipt) { r.SHA256 = strings.ToUpper(testSHA) }},
 		{"negative size", func(r *Receipt) { r.Size = -1 }},
+		{"non-UTC created_at", func(r *Receipt) { r.CreatedAt = "1970-01-01T01:00:00+01:00" }},
+		{"noncanonical fractional created_at", func(r *Receipt) { r.CreatedAt = "1970-01-01T00:00:00.000Z" }},
 		{"absolute name", func(r *Receipt) { r.ReplicaName = "/tmp/object" }},
 		{"backslash name", func(r *Receipt) { r.ReplicaName = "aaa-replica-v1\\object" }},
 		{"control note", func(r *Receipt) { r.Note = "bad\nnote" }},
