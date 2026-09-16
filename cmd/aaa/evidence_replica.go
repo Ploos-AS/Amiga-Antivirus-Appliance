@@ -77,7 +77,7 @@ func runEvidenceReplica(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := verifyReplicaRoot(*root); err != nil {
+	if err := verifyReplicaNamespace(*root, receipt.SHA256); err != nil {
 		return err
 	}
 	objectPath := filepath.Join(*root, filepath.FromSlash(receipt.ReplicaName))
@@ -201,13 +201,34 @@ func verifyReplicaRoot(root string) error {
 	return nil
 }
 
+func replicaNamespaceParts(sha string) []string {
+	return []string{"aaa-replica-v1", "objects", "sha256", sha[:2]}
+}
+
+func verifyReplicaNamespace(root, sha string) error {
+	if err := verifyReplicaRoot(root); err != nil {
+		return err
+	}
+	current := root
+	for _, part := range replicaNamespaceParts(sha) {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("replica namespace component must be a real directory: %s", current)
+		}
+	}
+	return nil
+}
+
 func ensureReplicaDirectories(root, sha string) error {
 	if err := verifyReplicaRoot(root); err != nil {
 		return err
 	}
-	parts := []string{"aaa-replica-v1", "objects", "sha256", sha[:2]}
 	current := root
-	for _, part := range parts {
+	for _, part := range replicaNamespaceParts(sha) {
 		current = filepath.Join(current, part)
 		if err := os.Mkdir(current, 0o750); err != nil && !errors.Is(err, os.ErrExist) {
 			return err
