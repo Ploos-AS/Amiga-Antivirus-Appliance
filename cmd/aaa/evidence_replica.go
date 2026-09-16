@@ -57,8 +57,14 @@ func runEvidenceReplicate(args []string, stdout, stderr io.Writer, now func() ti
 }
 
 func runEvidenceReplica(args []string, stdout, stderr io.Writer) error {
-	if len(args) < 1 || args[0] != "verify" {
-		return errors.New("evidence replica requires subcommand: verify")
+	if len(args) < 1 {
+		return errors.New("evidence replica requires subcommand: verify or verify-session")
+	}
+	if args[0] == "verify-session" {
+		return runEvidenceReplicaVerifySession(args[1:], stdout, stderr)
+	}
+	if args[0] != "verify" {
+		return errors.New("evidence replica requires subcommand: verify or verify-session")
 	}
 	fs := flag.NewFlagSet("evidence replica verify", flag.ContinueOnError)
 	fs.SetOutput(stderr)
