@@ -27,6 +27,9 @@ aaa evidence verify evidence.json
 aaa evidence verify-bundle case.aaa-evidence.zip
 aaa evidence ledger verify
 aaa evidence ledger checkpoint verify-installed
+aaa evidence replicate --destination /mnt/aaa-archive --kind evidence-bundle case.aaa-evidence.zip
+aaa evidence replicate-session --destination /mnt/aaa-archive --session session.json --object evidence-bundle:case.aaa-evidence.zip
+aaa evidence replica verify-session --root /mnt/aaa-archive session.json
 aaa trust-update status
 aaa signatures candidates
 aaa signatures validate
@@ -62,6 +65,7 @@ aaa version
 - **M12.0–M12.6** — Greaseweazle acquisition foundation, hash-bound ADF acquisition, multi-read repeatability, raw SCP flux preservation, same-media acquisition sessions and qualification tooling: implemented and code-qualified with deterministic fake-`gw` coverage; physical Greaseweazle/drive/media qualification remains explicitly pending hardware. See `docs/M12_QUALIFICATION.md`.
 - **M13.0–M13.7** — Portable Evidence Bundles: deterministic manifests and ZIP transport, offline verification, detached Ed25519 signatures, signing-key trust lifecycle, authenticated trust-store updates, replay/rollback protection and crash-safe persistent trust installation: implemented and code-qualified for amd64/arm64; no physical hardware required. See `docs/M13_QUALIFICATION.md`.
 - **M14.0–M14.7** — Authenticated Evidence Ledger: deterministic append-only JSONL chain, object-bound events, full-chain verification, portable Ed25519 checkpoints, checkpoint signer trust lifecycle, root-authenticated trust-store updates, persistent monotonic trust state and installed-policy verification: implemented and code-qualified for amd64/arm64; no physical hardware required. See `docs/M14_QUALIFICATION.md`.
+- **M15.1–M15.2** — Off-appliance Evidence Replication: immutable content-addressed single-object replication plus deterministic multi-object replication sessions, portable receipts/session metadata, idempotent exact-object handling, partial-failure recording and offline replica/session verification: implemented and code-qualified for amd64/arm64. M15 remains open for later replication layers. See `docs/M15_1_QUALIFICATION.md` and `docs/M15_2_QUALIFICATION.md`.
 
 M3 can declare an ADF `infected` when its bootblock exactly matches a known-malicious entry. A known-clean bootblock does not make the whole disk clean, because other malware may be present elsewhere in the disk image.
 
@@ -112,6 +116,8 @@ M13 makes selected evidence portable without changing its classification. Operat
 
 M14 adds a local authenticated evidence-event ledger. Records form a deterministic append-only hash chain, and portable Ed25519 checkpoints can bind independently retained trust to a specific ledger prefix. Checkpoint signer policy has its own trust role, authenticated update chain and persistent monotonic state; `aaa evidence ledger checkpoint verify-installed` consumes the installed policy directly. The ledger is not a blockchain or trusted timestamp service, and suffix deletion is detectable only relative to an independently retained trusted checkpoint. See `docs/M14_QUALIFICATION.md`.
 
+M15 adds a push-only content-addressed replica boundary for selected M13/M14 evidence. M15.1 replicates and verifies immutable individual objects; M15.2 adds deterministic multi-object sessions with explicit per-object terminal outcomes and no false transaction-atomicity claim. Receipts and sessions are operator-held metadata in the current layers; a mounted directory on the same physical disk is supported technically but does not satisfy the intended independent-failure-domain deployment goal. See `docs/M15_0_SPEC.md`, `docs/M15_1_QUALIFICATION.md` and `docs/M15_2_QUALIFICATION.md`.
+
 Example fields:
 
 ```text
@@ -160,7 +166,7 @@ sudo AAA_SMB_PASSWORD_FILE=/root/aaa-smb-password sh scripts/qualify-m11.sh
 sudo sh scripts/qualify-m12.sh
 ```
 
-M10 is not fully appliance-qualified until the automated M10 runtime gate and the visible/manual browser checklist in `docs/M10_5_SPEC.md` have both passed on the Orange Pi Zero 3 / DietPi reference system. M11 is not appliance-qualified until its authenticated SMB3 end-to-end gate has passed on the same reference appliance. M12 is not physically qualified until `scripts/qualify-m12.sh` has passed with a real Greaseweazle, drive and diskette and the resulting acquisition evidence has been retained. M13 and M14 require no additional physical hardware gate.
+M10 is not fully appliance-qualified until the automated M10 runtime gate and the visible/manual browser checklist in `docs/M10_5_SPEC.md` have both passed on the Orange Pi Zero 3 / DietPi reference system. M11 is not appliance-qualified until its authenticated SMB3 end-to-end gate has passed on the same reference appliance. M12 is not physically qualified until `scripts/qualify-m12.sh` has passed with a real Greaseweazle, drive and diskette and the resulting acquisition evidence has been retained. M13, M14 and M15.1/M15.2 require no additional physical hardware gate for code qualification; genuinely independent replica storage remains a deployment property.
 
 ## Development
 
@@ -194,8 +200,9 @@ The core is mostly standard-library Go. M6.1b adds the MIT-licensed `github.com/
 - M12 Greaseweazle integration — implemented through M12.6; physical acquisition qualification pending hardware
 - M13 Portable Evidence Bundles — implemented and code-qualified through M13.7; no physical hardware gate required
 - M14 Authenticated Evidence Ledger — implemented and code-qualified through M14.7; no physical hardware gate required
+- M15 Off-appliance Evidence Replication — M15.1 single-object replication and M15.2 deterministic sessions implemented/code-qualified; M15 remains open for later layers
 
-Until the reference appliance and acquisition hardware are available, the remaining M0/M8/M9/M10/M11/M12 qualification gates are intentionally recorded as hardware/runtime pending rather than simulated as passes. M13 and M14 are independently code-qualified and closed.
+Until the reference appliance and acquisition hardware are available, the remaining M0/M8/M9/M10/M11/M12 qualification gates are intentionally recorded as hardware/runtime pending rather than simulated as passes. M13, M14 and the current M15.1/M15.2 layers are independently code-qualified.
 
 ## License
 
