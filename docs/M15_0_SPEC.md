@@ -1,6 +1,6 @@
 # M15.0 — Off-appliance Evidence Replication
 
-Status: SPECIFIED — implementation pending.
+Status: FOUNDATION IMPLEMENTED — M15.1 and M15.2 CODE-QUALIFIED; M15 remains open for later layers.
 
 ## Purpose
 
@@ -14,7 +14,7 @@ M14 can detect ledger rollback only relative to a trusted checkpoint that surviv
 
 M15 therefore creates an explicit export/replication boundary so that selected evidence and checkpoint material can survive loss or compromise of the AAA appliance.
 
-The first implementation targets a local mounted destination directory. The destination may in deployment be a separately mounted NAS, removable medium, read-mostly archive volume, or another host-mounted filesystem. Network protocols and cloud providers are not part of M15.0.
+The first implementation targets a local mounted destination directory. The destination may in deployment be a separately mounted NAS, removable medium, read-mostly archive volume, or another host-mounted filesystem. Network protocols and cloud providers are not part of M15.0–M15.2.
 
 ## Principles
 
@@ -23,9 +23,9 @@ The first implementation targets a local mounted destination directory. The dest
 3. **Content addressed.** Replicated objects are named and verified by SHA-256 rather than trusted source paths.
 4. **Write once.** Existing destination objects are accepted only when their bytes match the expected SHA-256 exactly; conflicting bytes fail closed.
 5. **No execution.** Replication and verification never execute evidence payloads.
-6. **Portable metadata.** Host absolute paths are not serialized into replica manifests.
+6. **Portable metadata.** Host absolute paths are not serialized into replica metadata.
 7. **Independent checkpoint retention.** M14 checkpoint documents are first-class replica objects.
-8. **Verification before success.** A copy is successful only after destination bytes have been re-opened and verified.
+8. **Verification before success.** A copy is successful only after destination bytes have been verified.
 9. **No false atomicity.** Replicating multiple objects is not claimed to be one atomic filesystem transaction. Completed immutable objects remain valid if a later object fails.
 10. **No automatic trust promotion.** Replication proves byte identity and retention, not malware authenticity or signer authorization.
 
@@ -45,9 +45,11 @@ A replica root uses a versioned namespace:
 
 Objects contain exact source bytes. File extensions and source basenames are deliberately not authoritative in the object store.
 
+The `receipts/` namespace is reserved for a later replica-side catalogue/session layer. M15.1 receipts and M15.2 session documents are currently operator-held metadata and are not silently copied there.
+
 ## Initial object kinds
 
-M15.1 should support at least:
+M15.1 supports:
 
 - `evidence-bundle` — M13 deterministic evidence ZIP;
 - `evidence-signature` — M13 detached evidence signature;
@@ -58,24 +60,13 @@ M15.1 should support at least:
 
 Third-party scanner binaries, ROMs, operating-system images, private keys and malware samples outside an explicitly selected M13 bundle are never replicated implicitly.
 
-## Receipt schema
+## Implemented layers
 
-M15.1 should introduce `aaa-evidence-replica-receipt-v1` with deterministic JSON representation.
+### M15.1 — single-object immutable replication
 
-Required fields:
+M15.1 implements schema `aaa-evidence-replica-receipt-v1`, content-addressed write-once storage, idempotent exact-object handling, source/root/namespace checks, destination verification and strict portable receipts.
 
-- `schema`
-- `created_at` — metadata timestamp, not trusted time;
-- `object_kind`
-- `sha256`
-- `size`
-- `replica_name` — portable relative object name below the replica namespace
-
-Optional fields may include a human operator note. Absolute source or destination host paths must not be serialized.
-
-A receipt is evidence that AAA copied and re-verified bytes at a destination at an operator-observed time. It is not a remote attestation and is not proof that the replica still exists later.
-
-## Proposed CLI
+Public CLI:
 
 ```text
 aaa evidence replicate \
@@ -85,18 +76,38 @@ aaa evidence replicate \
 
 aaa evidence replica verify \
   --root /mnt/aaa-archive \
-  receipt.json
+  case.aaa-evidence.zip.replica.json
 ```
 
-Later M15 layers may add batch/session manifests and remote transports. M15.0 deliberately does not select SSH, rsync, S3, WebDAV, SMB, NFS, object storage, or cloud-specific APIs.
+See `docs/M15_1_SPEC.md` and `docs/M15_1_QUALIFICATION.md`.
+
+### M15.2 — deterministic replication sessions
+
+M15.2 layers deterministic multi-object intent and terminal per-object outcomes over M15.1 without claiming transaction atomicity.
+
+Public CLI:
+
+```text
+aaa evidence replicate-session \
+  --destination /mnt/aaa-archive \
+  --session session.json \
+  --object evidence-bundle:case.aaa-evidence.zip \
+  --object ledger-checkpoint:checkpoint.json
+
+aaa evidence replica verify-session \
+  --root /mnt/aaa-archive \
+  session.json
+```
+
+See `docs/M15_2_SPEC.md` and `docs/M15_2_QUALIFICATION.md`.
 
 ## Source and destination safety
 
-Source files must be regular files and should use the established AAA opened-file `Stat` + path `Lstat` + `SameFile` identity pattern before hashing/copying. M15 does not claim Linux `O_NOFOLLOW` semantics.
+Source files use the established AAA opened-file `Stat` + path `Lstat` + `SameFile` identity pattern before hashing/copying. M15 does not claim Linux `O_NOFOLLOW`/`openat` semantics.
 
-The replica root and namespace must be real directories, not symlinks. Destination object creation must be exclusive. If the content-addressed object already exists, AAA must verify exact size and SHA-256 and treat only an exact match as idempotent success.
+The replica root and existing namespace components must be real directories, not symlinks. Destination objects are content-addressed and write-once. If an object already exists, only exact size/SHA-256 identity is accepted as idempotent success.
 
-Temporary files, if used, must remain within the destination namespace and must not be followed through symlinks. A failed partial copy must not be published under the final content-addressed object name.
+Temporary copy files remain inside the destination namespace and are not published under the final content-addressed name until copying succeeds. Current M15.1 qualification explicitly proves successful-path cleanup; it does not overstate failure-injection cleanup coverage.
 
 ## Relationship to M13 and M14
 
@@ -104,11 +115,11 @@ M13 remains authoritative for bundle structure, offline evidence verification, e
 
 M14 remains authoritative for ledger-chain and checkpoint verification. M15 preserves exact bytes from those systems. A replicated checkpoint is useful for rollback detection only if the verifier also has the appropriate independently trusted checkpoint signer policy/root material.
 
-M15 must not weaken M12's acquisition boundary: replication of an SCP and an ADF does not assert derivation between them.
+M15 does not weaken M12's acquisition boundary: replication of an SCP and an ADF does not assert derivation between them.
 
 ## Security boundary
 
-M15.0 does not provide:
+M15.0–M15.2 do not provide:
 
 - trusted timestamps;
 - remote attestation;
@@ -122,20 +133,8 @@ M15.0 does not provide:
 
 A mounted directory on the same physical disk is technically supported but does not satisfy the intended independent-failure-domain deployment goal.
 
-## Planned qualification
+## Qualification status
 
-M15.1 implementation should prove in CI:
+M15.1 and M15.2 are code-qualified in the normal repository CI, including amd64/arm64 build coverage. M15.2 final public dispatcher integration passed CI #540, run `35162907869`, at commit `348cf540b6129bc863d0e078f3f5d1023e88d090`.
 
-- deterministic content-addressed destination naming;
-- exact byte preservation and SHA-256 binding;
-- idempotent re-copy of identical objects;
-- fail-closed conflict handling;
-- source symlink rejection;
-- replica-root/namespace symlink rejection;
-- partial-copy cleanup;
-- receipt strict decoding and deterministic serialization;
-- no absolute host paths in receipts;
-- offline replica verification detects missing/tampered objects;
-- amd64 and arm64 builds.
-
-No Orange Pi, Greaseweazle, Amiga emulator or historical scanner runtime is required for the M15.0 specification or M15.1 core implementation.
+No Orange Pi, Greaseweazle, Amiga emulator or historical scanner runtime is required for these code qualifications. Real independent/off-appliance storage deployment remains an operational qualification concern.
